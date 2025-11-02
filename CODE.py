@@ -372,7 +372,7 @@ elif st.session_state["menu"] == "Orders":
     else:
         st.info("📝 Belum ada order yang diinput.")
 
-## ===== MENU: UPDATE PROGRESS =====
+# ===== MENU: UPDATE PROGRESS =====
 elif st.session_state["menu"] == "Progress":
     st.header("⚙️ UPDATE PROGRESS PRODUKSI")
     
@@ -409,22 +409,23 @@ elif st.session_state["menu"] == "Progress":
                 .progress-label-row {
                     display: flex;
                     align-items: center;
-                    height: 45px;
-                    margin-bottom: 10px;
+                    height: 38px;
+                    margin-bottom: 8px;
                     font-weight: bold;
                 }
                 .progress-slider-label {
                     display: flex;
                     align-items: center;
-                    height: 70px;
-                    margin-bottom: 8px;
+                    height: 48px;
+                    margin-bottom: 0px;
+                    padding-top: 5px;
                     font-weight: bold;
                 }
                 .progress-textarea-label {
                     display: flex;
                     align-items: flex-start;
-                    padding-top: 8px;
-                    margin-bottom: 8px;
+                    padding-top: 10px;
+                    margin-bottom: 0px;
                     font-weight: bold;
                 }
                 </style>
@@ -509,55 +510,8 @@ elif st.session_state["menu"] == "Progress":
                     elif progress >= 25:
                         progress_color = "#F59E0B"  # Orange
                     else:
-                        progress_color = "#EF4444"  # Red
+                        progress_col
                         
-                    st.markdown(f"<h2 style='color: {progress_color}; margin-top: -10px;'>{progress}%</h2>", unsafe_allow_html=True)
-                    
-                    notes = st.text_area("", value=str(order_data["Keterangan"]) if order_data["Keterangan"] else "", 
-                                        placeholder="Masukkan catatan...", 
-                                        label_visibility="collapsed", 
-                                        key=f"notes_{selected_order}",
-                                        height=100)
-                
-                st.markdown("")
-                
-                # Progress mapping info
-                with st.expander("ℹ️ Lihat Mapping Progress per Tahapan"):
-                    st.markdown("""
-                    | Tahapan | Progress |
-                    |---------|----------|
-                    | Pre Order | 0% |
-                    | Order di Supplier | 10% |
-                    | Warehouse | 20% |
-                    | Fitting 1 | 30% |
-                    | Amplas | 40% |
-                    | Revisi 1 | 50% |
-                    | Spray | 60% |
-                    | Fitting 2 | 70% |
-                    | Revisi Fitting 2 | 80% |
-                    | Packaging | 90% |
-                    | Pengiriman | 100% |
-                    """)
-                
-                col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
-                
-                with col_btn1:
-                    if st.button("🔄 RESET", use_container_width=True):
-                        st.rerun()
-                
-                with col_btn2:
-                    if st.button("💾 SAVE PROGRESS", use_container_width=True, type="primary"):
-                        st.session_state["data_produksi"].at[order_idx, "Progress"] = f"{progress}%"
-                        st.session_state["data_produksi"].at[order_idx, "Proses Saat Ini"] = current_proses
-                        st.session_state["data_produksi"].at[order_idx, "Keterangan"] = notes
-                        st.session_state["data_produksi"].at[order_idx, "Status"] = status_order
-                        
-                        if save_data(st.session_state["data_produksi"]):
-                            st.success(f"✅ Progress order {selected_order} berhasil diupdate!")
-                            st.balloons()
-    else:
-        st.info("📝 Belum ada order untuk diupdate.")
-        
 # ===== MENU: TRACKING PRODUKSI =====
 elif st.session_state["menu"] == "Tracking":
     st.header("🔍 TRACKING PRODUKSI")
