@@ -292,10 +292,10 @@ elif st.session_state["menu"] == "Orders":
             background-color: #1E3A8A;
             padding: 12px;
             border-radius: 8px;
-            margin-bottom: 10px;
+            margin-bottom: 20px;
         }
         .order-row {
-            padding: 8px 0;
+            padding: 15px 0;
             border-bottom: 1px solid #374151;
         }
         div[data-testid="column"] button {
