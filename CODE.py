@@ -188,21 +188,16 @@ elif st.session_state["menu"] == "Input":
         
         with col1:
             st.markdown("<div class='label-row'>Order Date</div>", unsafe_allow_html=True)
-            
-            st.markdown("<div class='label-row'>Buyer Name</div>", unsafe_allow_html=True)
-            
-            st.markdown("<div class='label-row'>Produk</div>", unsafe_allow_html=True)
-            
-            st.markdown("<div class='label-row'>Jumlah (pcs)</div>", unsafe_allow_html=True)
-            
-            st.markdown("<div class='label-row'>Due Date</div>", unsafe_allow_html=True)
-            
+            st.markdown("<div class='label-row'>Buyer Name</div>", unsafe_allow_html=True)            
+            st.markdown("<div class='label-row'>Produk</div>", unsafe_allow_html=True)            
+            st.markdown("<div class='label-row'>Jumlah (pcs)</div>", unsafe_allow_html=True)            
+            st.markdown("<div class='label-row'>Due Date</div>", unsafe_allow_html=True)            
             st.markdown("<div class='label-row'>Prioritas</div>", unsafe_allow_html=True)
         
         with col2:
             order_date = st.date_input("", datetime.date.today(), label_visibility="collapsed", key="input_order_date")
             
-            buyers_list = ["Belhome", "Indomsk", "SDM", "WMG", "Remar", "ITM", "San Marco", "Olympic", "IKEA"]
+            buyers_list = ["Belhome", "Indoteak", "SDM", "WMG", "Remar", "ITM", "San Marco"]
             buyer = st.selectbox("", buyers_list, label_visibility="collapsed", key="input_buyer")
             
             produk = st.text_input("", placeholder="Masukkan nama produk", label_visibility="collapsed", key="input_produk")
