@@ -335,10 +335,11 @@ elif st.session_state["menu"] == "Orders":
                         save_data(st.session_state["data_produksi"])
                         st.rerun()
             
-           st.markdown("<hr style='margin: 8px 0; opacity: 0.2;'>", unsafe_allow_html=True)
+          st.markdown("<hr style='margin: 8px 0; opacity: 0.2;'>", unsafe_allow_html=True)
     else:
         st.info("📝 Belum ada order yang diinput.")
-
+    else:
+        st.info("📝 Belum ada order yang diinput.")
 # ===== MENU: UPDATE PROGRESS =====
 elif st.session_state["menu"] == "Progress":
     st.header("⚙️ UPDATE PROGRESS PRODUKSI")
