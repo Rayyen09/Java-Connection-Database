@@ -409,7 +409,7 @@ elif st.session_state["menu"] == "Progress":
                 .progress-label-row {
                     display: flex;
                     align-items: center;
-                    height: 50px;
+                    height: 45px;
                     margin-bottom: 8px;
                     font-weight: bold;
                 }
