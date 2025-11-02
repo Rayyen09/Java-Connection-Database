@@ -284,28 +284,7 @@ elif st.session_state["menu"] == "Orders":
             ]
         
         st.markdown("---")
-        
-        # Custom CSS untuk styling table dan buttons
-        st.markdown("""
-        <style>
-        .order-table-header {
-            background-color: #1E3A8A;
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-        .order-row {
-            padding: 15px 0;
-            border-bottom: 1px solid #374151;
-        }
-        div[data-testid="column"] button {
-            width: 100%;
-            padding: 8px;
-            font-size: 16px;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-        
+              
         # Header
         st.markdown("<div class='order-table-header'>", unsafe_allow_html=True)
         header_cols = st.columns([1, 1, 0.8, 1.5, 0.5, 1, 0.8, 1, 1, 0.8])
