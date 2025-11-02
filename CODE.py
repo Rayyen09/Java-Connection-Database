@@ -307,7 +307,7 @@ elif st.session_state["menu"] == "Orders":
         """, unsafe_allow_html=True)
         
         # Header
-      st.markdown("<div class='order-table-header'>", unsafe_allow_html=True)
+        st.markdown("<div class='order-table-header'>", unsafe_allow_html=True)
         header_cols = st.columns([1, 1, 0.8, 1.5, 0.5, 1, 0.8, 1, 1, 0.8])
         header_cols[0].markdown("**Order ID**")
         header_cols[1].markdown("**Order Date**")
