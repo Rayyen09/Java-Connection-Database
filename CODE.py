@@ -339,7 +339,7 @@ elif st.session_state["menu"] == "Orders":
     else:
         st.info("📝 Belum ada order yang diinput.")
 
-# ===== MENU: UPDATE PROGRESS =====
+## ===== MENU: UPDATE PROGRESS =====
 elif st.session_state["menu"] == "Progress":
     st.header("⚙️ UPDATE PROGRESS PRODUKSI")
     
@@ -427,12 +427,23 @@ elif st.session_state["menu"] == "Progress":
                                                label_visibility="collapsed",
                                                key=f"status_{selected_order}")
                     
+                    # Mapping progress berdasarkan stage
+                    stage_to_progress = {
+                        "Pre Order": 0,
+                        "Order di Supplier": 10,
+                        "Warehouse": 20,
+                        "Fitting 1": 30,
+                        "Amplas": 40,
+                        "Revisi 1": 50,
+                        "Spray": 60,
+                        "Fitting 2": 70,
+                        "Revisi Fitting 2": 80,
+                        "Packaging": 90,
+                        "Pengiriman": 100
+                    }
+                    
                     # Auto update progress berdasarkan proses
-                    try:
-                        auto_progress = get_progress_from_stage(current_proses)
-                    except Exception as e:
-                        st.error(f"Error calculating progress: {e}")
-                        auto_progress = 0
+                    auto_progress = stage_to_progress.get(current_proses, 0)
                     
                     # Info box untuk notifikasi auto progress
                     current_saved_progress = int(order_data["Progress"].rstrip('%')) if order_data["Progress"] else 0
