@@ -188,10 +188,15 @@ elif st.session_state["menu"] == "Input":
         
         with col1:
             st.markdown("<div class='label-row'>Order Date</div>", unsafe_allow_html=True)
+            
             st.markdown("<div class='label-row'>Buyer Name</div>", unsafe_allow_html=True)
+            
             st.markdown("<div class='label-row'>Produk</div>", unsafe_allow_html=True)
+            
             st.markdown("<div class='label-row'>Jumlah (pcs)</div>", unsafe_allow_html=True)
+            
             st.markdown("<div class='label-row'>Due Date</div>", unsafe_allow_html=True)
+            
             st.markdown("<div class='label-row'>Prioritas</div>", unsafe_allow_html=True)
         
         with col2:
