@@ -103,9 +103,21 @@ st.markdown("---")
 
 # ===== BACK BUTTON (untuk semua menu kecuali Dashboard) =====
 if st.session_state["menu"] != "Dashboard":
-    if st.button("⬅️ Back to Dashboard", type="secondary"):
-        st.session_state["menu"] = "Dashboard"
-        st.rerun()
+    # Back button khusus untuk Update Progress
+    if st.session_state["menu"] == "Progress":
+        col_back1, col_back2, col_back3 = st.columns([1.2, 1.2, 3.6])
+        with col_back1:
+            if st.button("⬅️ Back to Dashboard", type="secondary", use_container_width=True):
+                st.session_state["menu"] = "Dashboard"
+                st.rerun()
+        with col_back2:
+            if st.button("📦 Back to Orders", type="secondary", use_container_width=True):
+                st.session_state["menu"] = "Orders"
+                st.rerun()
+    else:
+        if st.button("⬅️ Back to Dashboard", type="secondary"):
+            st.session_state["menu"] = "Dashboard"
+            st.rerun()
     st.markdown("---")
 
 # ===== MENU: DASHBOARD =====
