@@ -439,7 +439,7 @@ elif st.session_state["menu"] == "Progress":
                     st.markdown("<div class='progress-label-row'>Proses Saat Ini</div>", unsafe_allow_html=True)
                     st.markdown("<div class='progress-label-row'>Status Order</div>", unsafe_allow_html=True)
                     st.markdown("<div class='progress-slider-label'>Persentase Progress</div>", unsafe_allow_html=True)
-                    st.markdown("<div class='progress-textarea-label'>Catatan</div>", unsafe_allow_html=True)
+                    st.markdown("<div class='progress-textarea-label'></div>", unsafe_allow_html=True)
                 
                 with progress_col2:
                     st.text_input("", value=order_data["Order ID"], disabled=True, label_visibility="collapsed", key=f"orderid_{selected_order}")
