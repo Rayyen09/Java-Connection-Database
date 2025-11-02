@@ -359,10 +359,11 @@ elif st.session_state["menu"] == "Progress":
             default_idx = 0
             if "edit_order_idx" in st.session_state:
                 edit_order_id = df.iloc[st.session_state["edit_order_idx"]]["Order ID"]
-                default_idx = order_ids.index(edit_order_id)
+                if edit_order_id in order_ids:
+                    default_idx = order_ids.index(edit_order_id)
                 del st.session_state["edit_order_idx"]
             
-            selected_order = st.selectbox("Pilih Order ID", order_ids, index=default_idx, key="progress_order_select")
+            selected_order = st.selectbox("Pilih Order ID", order_ids, index=default_idx)
             
             if selected_order:
                 order_data = df[df["Order ID"] == selected_order].iloc[0]
@@ -406,23 +407,27 @@ elif st.session_state["menu"] == "Progress":
                     st.markdown("<div class='progress-textarea-label'>Catatan</div>", unsafe_allow_html=True)
                 
                 with col2:
-                    st.text_input("", value=order_data["Order ID"], disabled=True, label_visibility="collapsed", key="prog_order_id")
-                    st.text_input("", value=order_data["Produk"], disabled=True, label_visibility="collapsed", key="prog_product")
+                    st.text_input("", value=order_data["Order ID"], disabled=True, label_visibility="collapsed")
+                    st.text_input("", value=order_data["Produk"], disabled=True, label_visibility="collapsed")
                     
                     proses_list = get_tracking_stages()
+                    current_proses_idx = proses_list.index(order_data["Proses Saat Ini"]) if order_data["Proses Saat Ini"] in proses_list else 0
                     current_proses = st.selectbox("", proses_list, 
-                                                  index=proses_list.index(order_data["Proses Saat Ini"]) if order_data["Proses Saat Ini"] in proses_list else 0,
-                                                  label_visibility="collapsed", key="prog_proses")
+                                                  index=current_proses_idx,
+                                                  label_visibility="collapsed")
                     
-                    status_order = st.selectbox("", ["Pending", "Accepted", "Rejected"], 
-                                               index=["Pending", "Accepted", "Rejected"].index(order_data["Status"]),
-                                               label_visibility="collapsed", key="prog_status")
+                    status_list = ["Pending", "Accepted", "Rejected"]
+                    status_idx = status_list.index(order_data["Status"]) if order_data["Status"] in status_list else 0
+                    status_order = st.selectbox("", status_list, 
+                                               index=status_idx,
+                                               label_visibility="collapsed")
                     
-                    progress = st.slider("", 0, 100, int(order_data["Progress"].rstrip('%')), label_visibility="collapsed", key="prog_percentage")
+                    current_progress = int(order_data["Progress"].rstrip('%'))
+                    progress = st.slider("", 0, 100, current_progress, label_visibility="collapsed")
                     st.markdown(f"<h2 style='color: #1E3A8A; margin-top: -10px;'>{progress}%</h2>", unsafe_allow_html=True)
                     
                     notes = st.text_area("", value=order_data["Keterangan"], placeholder="Masukkan catatan...", 
-                                        label_visibility="collapsed", key="prog_notes", height=100)
+                                        label_visibility="collapsed", height=100)
                 
                 st.markdown("")
                 col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
