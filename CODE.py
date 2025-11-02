@@ -338,6 +338,7 @@ elif st.session_state["menu"] == "Orders":
             st.markdown("<div style='margin: 8px 0; border-bottom: 1px solid #374151;'></div>", unsafe_allow_html=True)
     else:
         st.info("📝 Belum ada order yang diinput.")
+
 # ===== MENU: UPDATE PROGRESS =====
 elif st.session_state["menu"] == "Progress":
     st.header("⚙️ UPDATE PROGRESS PRODUKSI")
@@ -414,7 +415,8 @@ elif st.session_state["menu"] == "Progress":
                     current_proses_idx = proses_list.index(order_data["Proses Saat Ini"]) if order_data["Proses Saat Ini"] in proses_list else 0
                     current_proses = st.selectbox("", proses_list, 
                                                   index=current_proses_idx,
-                                                  label_visibility="collapsed")
+                                                  label_visibility="collapsed",
+                                                  key=f"proses_select_{selected_order}")
                     
                     status_list = ["Pending", "Accepted", "Rejected"]
                     status_idx = status_list.index(order_data["Status"]) if order_data["Status"] in status_list else 0
@@ -422,14 +424,54 @@ elif st.session_state["menu"] == "Progress":
                                                index=status_idx,
                                                label_visibility="collapsed")
                     
-                    current_progress = int(order_data["Progress"].rstrip('%'))
-                    progress = st.slider("", 0, 100, current_progress, label_visibility="collapsed")
-                    st.markdown(f"<h2 style='color: #1E3A8A; margin-top: -10px;'>{progress}%</h2>", unsafe_allow_html=True)
+                    # Auto update progress berdasarkan proses
+                    auto_progress = get_progress_from_stage(current_proses)
+                    
+                    # Info box untuk notifikasi auto progress
+                    if auto_progress != int(order_data["Progress"].rstrip('%')):
+                        st.info(f"💡 Progress otomatis: {auto_progress}% untuk tahap '{current_proses}'")
+                    
+                    # Checkbox untuk manual override
+                    use_manual_progress = st.checkbox("Override progress manual", value=False, 
+                                                     help="Centang jika ingin mengatur progress secara manual")
+                    
+                    if use_manual_progress:
+                        current_progress = int(order_data["Progress"].rstrip('%'))
+                        progress = st.slider("", 0, 100, current_progress, label_visibility="collapsed",
+                                           help="Slide untuk mengatur progress manual")
+                    else:
+                        # Gunakan auto progress
+                        progress = auto_progress
+                        st.slider("", 0, 100, progress, label_visibility="collapsed", 
+                                disabled=True, help="Progress otomatis berdasarkan tahapan proses")
+                    
+                    # Display progress dengan warna
+                    progress_color = "#10B981" if progress == 100 else "#3B82F6" if progress >= 50 else "#F59E0B" if progress >= 25 else "#EF4444"
+                    st.markdown(f"<h2 style='color: {progress_color}; margin-top: -10px;'>{progress}%</h2>", unsafe_allow_html=True)
                     
                     notes = st.text_area("", value=order_data["Keterangan"], placeholder="Masukkan catatan...", 
                                         label_visibility="collapsed", height=100)
                 
                 st.markdown("")
+                
+                # Progress mapping info
+                with st.expander("ℹ️ Lihat Mapping Progress per Tahapan"):
+                    st.markdown("""
+                    | Tahapan | Progress |
+                    |---------|----------|
+                    | Pre Order | 0% |
+                    | Order di Supplier | 10% |
+                    | Warehouse | 20% |
+                    | Fitting 1 | 30% |
+                    | Amplas | 40% |
+                    | Revisi 1 | 50% |
+                    | Spray | 60% |
+                    | Fitting 2 | 70% |
+                    | Revisi Fitting 2 | 80% |
+                    | Packaging | 90% |
+                    | Pengiriman | 100% |
+                    """)
+                
                 col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
                 
                 with col_btn1:
