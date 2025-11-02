@@ -410,7 +410,7 @@ elif st.session_state["menu"] == "Progress":
                     display: flex;
                     align-items: center;
                     height: 45px;
-                    margin-bottom: 8px;
+                    margin-bottom: 10px;
                     font-weight: bold;
                 }
                 .progress-slider-label {
