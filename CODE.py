@@ -285,24 +285,45 @@ elif st.session_state["menu"] == "Orders":
         
         st.markdown("---")
         
-        # Header
-        header_cols = st.columns([1, 1, 0.8, 1.5, 0.5, 1, 0.8, 1, 1, 0.6])
-        header_cols[0].markdown("*Order ID*")
-        header_cols[1].markdown("*Order Date*")
-        header_cols[2].markdown("*Buyer*")
-        header_cols[3].markdown("*Produk*")
-        header_cols[4].markdown("*Qty*")
-        header_cols[5].markdown("*Due Date*")
-        header_cols[6].markdown("*Status*")
-        header_cols[7].markdown("*Progress*")
-        header_cols[8].markdown("*Proses*")
-        header_cols[9].markdown("*Action*")
+        # Custom CSS untuk styling table dan buttons
+        st.markdown("""
+        <style>
+        .order-table-header {
+            background-color: #1E3A8A;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        .order-row {
+            padding: 8px 0;
+            border-bottom: 1px solid #374151;
+        }
+        div[data-testid="column"] button {
+            width: 100%;
+            padding: 8px;
+            font-size: 16px;
+        }
+        </style>
+        """, unsafe_allow_html=True)
         
-        st.markdown("---")
+        # Header
+        st.markdown("<div class='order-table-header'>", unsafe_allow_html=True)
+        header_cols = st.columns([1, 1, 0.8, 1.5, 0.5, 1, 0.8, 1, 1, 0.8])
+        header_cols[0].markdown("**Order ID**")
+        header_cols[1].markdown("**Order Date**")
+        header_cols[2].markdown("**Buyer**")
+        header_cols[3].markdown("**Produk**")
+        header_cols[4].markdown("**Qty**")
+        header_cols[5].markdown("**Due Date**")
+        header_cols[6].markdown("**Status**")
+        header_cols[7].markdown("**Progress**")
+        header_cols[8].markdown("**Proses**")
+        header_cols[9].markdown("**Action**")
+        st.markdown("</div>", unsafe_allow_html=True)
         
         # Table with actions
         for idx, row in df_filtered.iterrows():
-            cols = st.columns([1, 1, 0.8, 1.5, 0.5, 1, 0.8, 1, 1, 0.6])
+            cols = st.columns([1, 1, 0.8, 1.5, 0.5, 1, 0.8, 1, 1, 0.8])
             
             cols[0].write(row['Order ID'])
             cols[1].write(str(row['Order Date']))
@@ -322,20 +343,20 @@ elif st.session_state["menu"] == "Orders":
             cols[8].write(row['Proses Saat Ini'])
             
             with cols[9]:
-                btn_col1, btn_col2 = st.columns(2)
-                with btn_col1:
-                    if st.button("✏", key=f"edit_{idx}", help="Edit"):
+                action_col1, action_col2 = st.columns(2)
+                with action_col1:
+                    if st.button("✏️", key=f"edit_{idx}", help="Edit Order", use_container_width=True):
                         st.session_state["edit_order_idx"] = idx
                         st.session_state["menu"] = "Progress"
                         st.rerun()
-                with btn_col2:
-                    if st.button("🗑", key=f"del_{idx}", help="Delete"):
+                with action_col2:
+                    if st.button("🗑️", key=f"del_{idx}", help="Delete Order", use_container_width=True):
                         st.session_state["data_produksi"].drop(idx, inplace=True)
                         st.session_state["data_produksi"].reset_index(drop=True, inplace=True)
                         save_data(st.session_state["data_produksi"])
                         st.rerun()
             
-            st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
+            st.markdown("<div style='margin: 8px 0; border-bottom: 1px solid #374151;'></div>", unsafe_allow_html=True)
     else:
         st.info("📝 Belum ada order yang diinput.")
 
