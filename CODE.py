@@ -195,51 +195,70 @@ if not df.empty:
         df_filtered = df_filtered[df_filtered["Status"].isin(filter_status)]
     df_filtered = df_filtered.sort_values(by=sort_by)
     
-    # Tampilkan tabel dengan nomor baris
-    df_display = df_filtered.copy()
-    df_display.insert(0, "No", range(len(df_display)))
-    st.dataframe(df_display, use_container_width=True, hide_index=True)
+    # Tampilkan tabel dengan aksi di setiap baris
+    st.markdown("#### Daftar Order")
     
-    # Aksi untuk setiap baris
-    st.markdown("### 🛠️ Kelola Data")
-    col_action1, col_action2 = st.columns(2)
+    # Header tabel
+    col_headers = st.columns([0.5, 1.5, 1.5, 1.5, 1, 1.2, 1.2, 1, 1, 1, 1.2])
+    headers = ["No", "Buyer", "Order No", "Produk", "Jumlah", "Start Date", "End Date", 
+               "Lead Time", "Progress", "Status", "Aksi"]
+    for col, header in zip(col_headers, headers):
+        col.markdown(f"**{header}**")
     
-    with col_action1:
-        st.markdown("**✏️ Edit Data**")
-        edit_index = st.number_input("Nomor baris yang ingin diedit:", 
-                                     min_value=0, 
-                                     max_value=len(df)-1 if len(df) > 0 else 0, 
-                                     step=1,
-                                     key="edit_idx")
-        if st.button("Edit Baris Ini", use_container_width=True):
-            st.session_state["edit_mode"] = True
-            st.session_state["edit_index"] = edit_index
-            st.rerun()
+    st.markdown("---")
     
-    with col_action2:
-        st.markdown("**🗑️ Hapus Data**")
-        delete_index = st.number_input("Nomor baris yang ingin dihapus:", 
-                                       min_value=0, 
-                                       max_value=len(df)-1 if len(df) > 0 else 0, 
-                                       step=1,
-                                       key="delete_idx")
-        if st.button("🗑️ Hapus Baris Ini", type="secondary", use_container_width=True):
-            st.session_state["data_produksi"].drop(delete_index, inplace=True)
-            st.session_state["data_produksi"].reset_index(drop=True, inplace=True)
-            if save_data(st.session_state["data_produksi"]):
-                st.success(f"✅ Baris ke-{delete_index} berhasil dihapus!")
-                st.rerun()
+    # Data rows dengan tombol aksi
+    for idx, row in df_filtered.iterrows():
+        cols = st.columns([0.5, 1.5, 1.5, 1.5, 1, 1.2, 1.2, 1, 1, 1, 1.2])
+        
+        cols[0].write(idx)
+        cols[1].write(row["Buyer"])
+        cols[2].write(row["Order No"])
+        cols[3].write(row["Produk"])
+        cols[4].write(row["Jumlah"])
+        cols[5].write(str(row["Start Date"]))
+        cols[6].write(str(row["End Date"]))
+        cols[7].write(f"{row['Lead Time (hari)']} hari")
+        cols[8].write(f"{row['Progress (%)']}%")
+        
+        # Status dengan warna
+        status_color = {"On Time": "🟢", "Delayed": "🔴", "Pending": "🟡"}
+        cols[9].write(f"{status_color.get(row['Status'], '')} {row['Status']}")
+        
+        # Tombol aksi di kolom paling kanan
+        with cols[10]:
+            col_edit, col_delete = st.columns(2)
+            with col_edit:
+                if st.button("✏️", key=f"edit_{idx}", help="Edit data ini"):
+                    st.session_state["edit_mode"] = True
+                    st.session_state["edit_index"] = idx
+                    st.rerun()
+            with col_delete:
+                if st.button("🗑️", key=f"delete_{idx}", help="Hapus data ini", type="secondary"):
+                    st.session_state["data_produksi"].drop(idx, inplace=True)
+                    st.session_state["data_produksi"].reset_index(drop=True, inplace=True)
+                    if save_data(st.session_state["data_produksi"]):
+                        st.success(f"✅ Data order {row['Order No']} berhasil dihapus!")
+                        st.rerun()
     
-    # Hapus semua data
-    if st.button("⚠️ Hapus SEMUA Data", type="secondary"):
-        if st.checkbox("Saya yakin ingin menghapus SEMUA data"):
-            st.session_state["data_produksi"] = pd.DataFrame(columns=[
-                "Buyer", "Order No", "Produk", "Jumlah", "Start Date", "End Date",
-                "Lead Time (hari)", "Progress (%)", "Status"
-            ])
-            if save_data(st.session_state["data_produksi"]):
-                st.success("✅ Semua data berhasil dihapus!")
-                st.rerun()
+    st.markdown("---")
+    
+    # Hapus semua data (di bawah tabel)
+    with st.expander("⚠️ Zona Bahaya - Hapus Semua Data"):
+        st.warning("**PERHATIAN:** Tindakan ini akan menghapus SEMUA data produksi!")
+        col_danger1, col_danger2 = st.columns([3, 1])
+        with col_danger1:
+            confirm_delete = st.checkbox("Saya yakin ingin menghapus SEMUA data")
+        with col_danger2:
+            if st.button("🗑️ Hapus Semua", type="secondary", disabled=not confirm_delete, use_container_width=True):
+                st.session_state["data_produksi"] = pd.DataFrame(columns=[
+                    "Buyer", "Order No", "Produk", "Jumlah", "Start Date", "End Date",
+                    "Lead Time (hari)", "Progress (%)", "Status"
+                ])
+                if save_data(st.session_state["data_produksi"]):
+                    st.success("✅ Semua data berhasil dihapus!")
+                    st.rerun()
+
 else:
     st.info("📝 Belum ada data yang dimasukkan. Mulai dengan menambahkan data produksi baru di atas.")
 
