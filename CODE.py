@@ -4,20 +4,12 @@ import datetime
 import json
 import os
 import plotly.express as px
-import plotly.graph_objects as go
-from datetime import datetime, timedelta
+import plotly.figure_factory as ff
 
 # ===== KONFIGURASI DATABASE =====
 DATABASE_PATH = "ppic_data.json"
 
 st.set_page_config(page_title="PPIC-DSS System", layout="wide", page_icon="🏭")
-
-# ===== DEFINISI PROSES PRODUKSI =====
-PRODUCTION_STAGES = [
-    "Pre-Order", "Order di Supplier", "Warehouse", "Fitting 1", 
-    "Amplas", "Revisi 1", "Spray", "Fitting 2", "Revisi Fitting 2", 
-    "Packaging", "Pengiriman"
-]
 
 # ===== FUNGSI DATABASE =====
 def load_data():
@@ -28,46 +20,23 @@ def load_data():
                 data = json.load(f)
                 df = pd.DataFrame(data)
                 if not df.empty:
-                    # Konversi tanggal
-                    if 'Order Date' in df.columns:
-                        df['Order Date'] = pd.to_datetime(df['Order Date'], errors='coerce').dt.date
-                    if 'Due Date' in df.columns:
-                        df['Due Date'] = pd.to_datetime(df['Due Date'], errors='coerce').dt.date
-                    
-                    # Konversi progress tracking
-                    for stage in PRODUCTION_STAGES:
-                        if stage in df.columns:
-                            df[stage] = pd.to_datetime(df[stage], errors='coerce')
+                    df['Order Date'] = pd.to_datetime(df['Order Date']).dt.date
+                    df['Due Date'] = pd.to_datetime(df['Due Date']).dt.date
                 return df
         except Exception as e:
             st.error(f"Error loading data: {e}")
-    
-    # Return empty dataframe dengan struktur lengkap
-    columns = [
+    return pd.DataFrame(columns=[
         "Order ID", "Order Date", "Buyer", "Produk", "Qty", "Due Date", 
-        "Prioritas", "Status", "Progress", "Proses Saat Ini", "Keterangan"
-    ] + PRODUCTION_STAGES
-    
-    return pd.DataFrame(columns=columns)
+        "Prioritas", "Status", "Progress", "Proses Saat Ini", "Keterangan",
+        "Tracking"
+    ])
 
 def save_data(df):
     """Menyimpan data ke file JSON"""
     try:
         df_copy = df.copy()
-        
-        # Konversi date ke string
-        date_columns = ['Order Date', 'Due Date']
-        for col in date_columns:
-            if col in df_copy.columns:
-                df_copy[col] = df_copy[col].astype(str)
-        
-        # Konversi datetime ke string untuk progress tracking
-        for stage in PRODUCTION_STAGES:
-            if stage in df_copy.columns:
-                df_copy[stage] = df_copy[stage].apply(
-                    lambda x: x.strftime('%Y-%m-%d %H:%M:%S') if pd.notna(x) else None
-                )
-        
+        df_copy['Order Date'] = df_copy['Order Date'].astype(str)
+        df_copy['Due Date'] = df_copy['Due Date'].astype(str)
         with open(DATABASE_PATH, 'w', encoding='utf-8') as f:
             json.dump(df_copy.to_dict('records'), f, ensure_ascii=False, indent=2)
         return True
@@ -75,99 +44,35 @@ def save_data(df):
         st.error(f"Error saving data: {e}")
         return False
 
-# ===== FUNGSI GANTT CHART =====
-def create_gantt_chart(df):
-    """Membuat Gantt Chart dari data produksi"""
-    if df.empty:
-        return None
-    
-    gantt_data = []
-    for _, order in df.iterrows():
-        for stage in PRODUCTION_STAGES:
-            stage_date = order.get(stage)
-            if pd.notna(stage_date) and stage_date is not None:
-                try:
-                    if isinstance(stage_date, str):
-                        stage_date = pd.to_datetime(stage_date)
-                    
-                    gantt_data.append({
-                        'Task': order['Order ID'],
-                        'Start': stage_date,
-                        'Finish': stage_date + timedelta(days=1),
-                        'Stage': stage,
-                        'Product': order['Produk'],
-                        'Buyer': order['Buyer']
-                    })
-                except Exception as e:
-                    continue
-    
-    if not gantt_data:
-        return None
-    
-    gantt_df = pd.DataFrame(gantt_data)
-    fig = px.timeline(gantt_df, x_start="Start", x_end="Finish", y="Task", 
-                     color="Stage", title="Gantt Chart Progress Produksi",
-                     hover_data=["Product", "Buyer"])
-    fig.update_yaxes(categoryorder="total ascending")
-    fig.update_layout(height=400)
-    return fig
+def get_tracking_stages():
+    """Daftar tahapan tracking produksi"""
+    return [
+        "Pre Order",
+        "Order di Supplier",
+        "Warehouse",
+        "Fitting 1",
+        "Amplas",
+        "Revisi 1",
+        "Spray",
+        "Fitting 2",
+        "Revisi Fitting 2",
+        "Packaging",
+        "Pengiriman"
+    ]
 
-def create_progress_chart(df):
-    """Membuat chart progress produksi"""
-    if df.empty:
-        return None
-    
-    progress_data = []
-    for _, order in df.iterrows():
-        completed_stages = 0
-        for stage in PRODUCTION_STAGES:
-            stage_date = order.get(stage)
-            if pd.notna(stage_date) and stage_date is not None:
-                completed_stages += 1
-        
-        total_stages = len(PRODUCTION_STAGES)
-        progress_percent = (completed_stages / total_stages) * 100 if total_stages > 0 else 0
-        
-        progress_data.append({
-            'Order ID': order['Order ID'],
-            'Progress': progress_percent,
-            'Buyer': order['Buyer'],
-            'Product': order['Produk'],
-            'Completed Stages': completed_stages
-        })
-    
-    progress_df = pd.DataFrame(progress_data)
-    
-    if progress_df.empty:
-        return None
-        
-    fig = px.bar(progress_df, x='Order ID', y='Progress', 
-                title='Progress Produksi per Order',
-                hover_data=['Buyer', 'Product', 'Completed Stages'],
-                color='Progress',
-                color_continuous_scale='Viridis')
-    fig.update_layout(height=400)
-    return fig
+def init_tracking_data(order_id):
+    """Inisialisasi data tracking untuk order baru"""
+    stages = get_tracking_stages()
+    return {stage: {"status": "Pending", "date": None} for stage in stages}
 
 # ===== INISIALISASI =====
 if "data_produksi" not in st.session_state:
     st.session_state["data_produksi"] = load_data()
-    
 if "menu" not in st.session_state:
     st.session_state["menu"] = "Dashboard"
-    
-if "previous_menu" not in st.session_state:
-    st.session_state["previous_menu"] = "Dashboard"
-
-# Inisialisasi frozen dates dengan handling error
-try:
-    if "frozen_start" not in st.session_state:
-        st.session_state["frozen_start"] = datetime.now().date()
-    if "frozen_end" not in st.session_state:
-        st.session_state["frozen_end"] = datetime.now().date() + timedelta(days=30)
-except:
-    st.session_state["frozen_start"] = datetime.now().date()
-    st.session_state["frozen_end"] = datetime.now().date() + timedelta(days=30)
+if "frozen_start" not in st.session_state:
+    st.session_state["frozen_start"] = datetime.date(2025, 10, 27)
+    st.session_state["frozen_end"] = datetime.date(2025, 11, 17)
 
 # ===== SIDEBAR MENU =====
 st.sidebar.title("🏭 PPIC-DSS MENU")
@@ -175,43 +80,33 @@ st.sidebar.markdown("---")
 
 menu_options = {
     "📊 Dashboard": "Dashboard",
-    "📋 Input Pesanan Baru": "Input", 
+    "📋 Input Pesanan Baru": "Input",
     "📦 Daftar Order": "Orders",
     "⚙️ Update Progress": "Progress",
-    "📍 Production Tracking": "Tracking",
-    "📈 Gantt Chart": "GanttChart",
+    "🔍 Tracking Produksi": "Tracking",
     "❄️ Frozen Zone": "Frozen",
-    "📊 Analisis & Laporan": "Analytics"
+    "📈 Analisis & Laporan": "Analytics",
+    "📊 Gantt Chart": "Gantt"
 }
 
 for label, value in menu_options.items():
     if st.sidebar.button(label, use_container_width=True):
-        st.session_state["previous_menu"] = st.session_state["menu"]
         st.session_state["menu"] = value
-        st.rerun()
 
 st.sidebar.markdown("---")
-
-# Tampilkan info database
-try:
-    file_size = os.path.getsize(DATABASE_PATH) if os.path.exists(DATABASE_PATH) else 0
-    st.sidebar.info(f"📁 Database: {os.path.basename(DATABASE_PATH)}\n"
-                   f"📊 {len(st.session_state['data_produksi'])} orders")
-except:
-    st.sidebar.info("📁 Database: ppic_data.json\n📊 0 orders")
+st.sidebar.info(f"📁 Database: `{os.path.basename(DATABASE_PATH)}`")
 
 # ===== HEADER =====
 st.title("🏭 Sistem PPIC Decision Support System")
 st.caption("Production Planning & Inventory Control Management System v4.0")
 st.markdown("---")
 
-# ===== FUNGSI TOMBOL BACK =====
-def back_button():
-    """Tombol untuk kembali ke menu sebelumnya"""
-    if st.button("← Kembali", use_container_width=False):
-        st.session_state["menu"] = st.session_state["previous_menu"]
-        st.session_state["previous_menu"] = st.session_state["menu"]
+# ===== BACK BUTTON (untuk semua menu kecuali Dashboard) =====
+if st.session_state["menu"] != "Dashboard":
+    if st.button("⬅️ Back to Dashboard", type="secondary"):
+        st.session_state["menu"] = "Dashboard"
         st.rerun()
+    st.markdown("---")
 
 # ===== MENU: DASHBOARD =====
 if st.session_state["menu"] == "Dashboard":
@@ -224,30 +119,15 @@ if st.session_state["menu"] == "Dashboard":
         col1, col2, col3, col4, col5 = st.columns(5)
         
         total_orders = len(df)
-        accepted = len(df[df["Status"] == "Accepted"]) if "Status" in df.columns else 0
-        pending = len(df[df["Status"] == "Pending"]) if "Status" in df.columns else 0
-        rejected = len(df[df["Status"] == "Rejected"]) if "Status" in df.columns else 0
-        
-        # Hitung progress rata-rata
-        progress_values = []
-        for _, order in df.iterrows():
-            completed_stages = 0
-            for stage in PRODUCTION_STAGES:
-                stage_date = order.get(stage)
-                if pd.notna(stage_date) and stage_date is not None:
-                    completed_stages += 1
-            progress_percent = (completed_stages / len(PRODUCTION_STAGES)) * 100
-            progress_values.append(progress_percent)
-        
-        avg_progress = sum(progress_values) / len(progress_values) if progress_values else 0
+        accepted = len(df[df["Status"] == "Accepted"])
+        pending = len(df[df["Status"] == "Pending"])
+        rejected = len(df[df["Status"] == "Rejected"])
+        avg_progress = df["Progress"].str.rstrip('%').astype('float').mean()
         
         col1.metric("📦 Total Orders", total_orders)
-        col2.metric("✅ Accepted", accepted, 
-                   delta=f"{(accepted/total_orders*100):.0f}%" if total_orders > 0 else "0%")
-        col3.metric("⏳ Pending", pending, 
-                   delta=f"{(pending/total_orders*100):.0f}%" if total_orders > 0 else "0%")
-        col4.metric("❌ Rejected", rejected, 
-                   delta=f"-{(rejected/total_orders*100):.0f}%" if total_orders > 0 else "0%")
+        col2.metric("✅ Accepted", accepted, delta=f"{(accepted/total_orders*100):.0f}%")
+        col3.metric("⏳ Pending", pending, delta=f"{(pending/total_orders*100):.0f}%")
+        col4.metric("❌ Rejected", rejected, delta=f"-{(rejected/total_orders*100):.0f}%")
         col5.metric("📈 Avg Progress", f"{avg_progress:.1f}%")
         
         st.markdown("---")
@@ -257,76 +137,60 @@ if st.session_state["menu"] == "Dashboard":
         
         with col_chart1:
             st.subheader("Status Distribution")
-            if "Status" in df.columns:
-                status_count = df["Status"].value_counts()
-                if not status_count.empty:
-                    fig_status = px.pie(values=status_count.values, names=status_count.index, 
-                                       title="Distribusi Status Order")
-                    st.plotly_chart(fig_status, use_container_width=True)
-                else:
-                    st.info("Tidak ada data status")
-            else:
-                st.info("Kolom Status tidak ditemukan")
+            status_count = df["Status"].value_counts()
+            fig1 = px.pie(values=status_count.values, names=status_count.index, 
+                         title="Status Orders", color_discrete_sequence=px.colors.qualitative.Set3)
+            st.plotly_chart(fig1, use_container_width=True)
         
         with col_chart2:
-            st.subheader("Top 5 Products")
-            if "Produk" in df.columns:
-                product_count = df["Produk"].value_counts().head(5)
-                if not product_count.empty:
-                    fig_product = px.bar(x=product_count.values, y=product_count.index, 
-                                       orientation='h', title="Top 5 Produk",
-                                       labels={'x': 'Jumlah Order', 'y': 'Produk'})
-                    st.plotly_chart(fig_product, use_container_width=True)
-                else:
-                    st.info("Tidak ada data produk")
-            else:
-                st.info("Kolom Produk tidak ditemukan")
+            st.subheader("Orders by Buyer")
+            buyer_count = df["Buyer"].value_counts()
+            fig2 = px.bar(x=buyer_count.index, y=buyer_count.values, 
+                         labels={'x': 'Buyer', 'y': 'Jumlah Order'},
+                         title="Jumlah Order per Buyer",
+                         color=buyer_count.values,
+                         color_continuous_scale='Blues')
+            st.plotly_chart(fig2, use_container_width=True)
         
         # Recent Orders
-        st.subheader("🕒 Recent Orders (Last 5)")
-        if "Order Date" in df.columns:
-            recent_df = df.sort_values("Order Date", ascending=False).head(5)
-            display_cols = ["Order ID", "Order Date", "Buyer", "Produk", "Qty", "Status"]
-            display_cols = [col for col in display_cols if col in recent_df.columns]
-            st.dataframe(recent_df[display_cols], use_container_width=True, hide_index=True)
-        else:
-            st.info("Tidak ada data order terbaru")
+        st.subheader("🕒 Recent Orders (Last 10)")
+        recent_df = df.sort_values("Order Date", ascending=False).head(10)
+        st.dataframe(recent_df[["Order ID", "Order Date", "Buyer", "Produk", "Qty", "Status", "Progress", "Proses Saat Ini"]], 
+                     use_container_width=True, hide_index=True)
     else:
         st.info("📝 Belum ada data. Silakan input pesanan baru.")
 
 # ===== MENU: INPUT PESANAN BARU =====
 elif st.session_state["menu"] == "Input":
     st.header("📋 INPUT PESANAN BARU")
-    back_button()
     
     with st.container():
         st.markdown("""
-        <div style='background-color: #1E3A8A; padding: 10px; border-radius: 5px; margin-bottom: 20px;'>
-            <h3 style='color: white; text-align: center; margin: 0;'>INPUT PESANAN BARU</h3>
+        <div style='background-color: #1E3A8A; padding: 15px; border-radius: 8px; margin-bottom: 25px;'>
+            <h3 style='color: white; text-align: center; margin: 0;'>FORM INPUT PESANAN BARU</h3>
         </div>
         """, unsafe_allow_html=True)
         
-        # Layout dengan form yang lebih rapi
-        col1, col2 = st.columns([1, 2])
+        col1, col2 = st.columns([1, 3])
         
         with col1:
-            st.markdown("**ORDER DATE**")
-            st.markdown("**BUYER NAME**") 
-            st.markdown("**PRODUK**")
-            st.markdown("**JUMLAH (Qty)**")
-            st.markdown("**DUE DATE**")
-            st.markdown("**PRIORITAS**")
+            st.markdown("<div style='padding-top: 8px;'><b>Order Date</b></div>", unsafe_allow_html=True)
+            st.markdown("<div style='padding-top: 8px;'><b>Buyer Name</b></div>", unsafe_allow_html=True)
+            st.markdown("<div style='padding-top: 8px;'><b>Produk</b></div>", unsafe_allow_html=True)
+            st.markdown("<div style='padding-top: 8px;'><b>Jumlah (pcs)</b></div>", unsafe_allow_html=True)
+            st.markdown("<div style='padding-top: 8px;'><b>Due Date</b></div>", unsafe_allow_html=True)
+            st.markdown("<div style='padding-top: 8px;'><b>Prioritas</b></div>", unsafe_allow_html=True)
         
         with col2:
-            order_date = st.date_input("Order Date", datetime.now().date(), label_visibility="collapsed", key="input_order_date")
+            order_date = st.date_input("", datetime.date.today(), label_visibility="collapsed", key="input_order_date")
             
-            buyers_list = ["Belhome", "Indomsk", "SDM", "WMG", "Remar", "ITM", "San Marco", "Olympic", "IKEA", "Lainnya"]
-            buyer = st.selectbox("Buyer", buyers_list, label_visibility="collapsed", key="input_buyer")
+            buyers_list = ["Belhome", "Indomsk", "SDM", "WMG", "Remar", "ITM", "San Marco", "Olympic", "IKEA"]
+            buyer = st.selectbox("", buyers_list, label_visibility="collapsed", key="input_buyer")
             
-            produk = st.text_input("Produk", placeholder="Masukkan nama produk", label_visibility="collapsed", key="input_produk")
-            qty = st.number_input("Quantity", min_value=1, value=1, label_visibility="collapsed", key="input_qty")
-            due_date = st.date_input("Due Date", datetime.now().date() + timedelta(days=30), label_visibility="collapsed", key="input_due")
-            prioritas = st.selectbox("Prioritas", ["High", "Medium", "Low"], label_visibility="collapsed", key="input_priority")
+            produk = st.text_input("", placeholder="Masukkan nama produk", label_visibility="collapsed", key="input_produk")
+            qty = st.number_input("", min_value=1, value=1, label_visibility="collapsed", key="input_qty")
+            due_date = st.date_input("", datetime.date.today() + datetime.timedelta(days=30), label_visibility="collapsed", key="input_due")
+            prioritas = st.selectbox("", ["High", "Medium", "Low"], label_visibility="collapsed", key="input_priority")
         
         st.markdown("")
         col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
@@ -338,65 +202,38 @@ elif st.session_state["menu"] == "Input":
         with col_btn2:
             if st.button("📤 SUBMIT ORDER", use_container_width=True, type="primary"):
                 if produk and buyer:
-                    # Generate Order ID
                     existing_ids = st.session_state["data_produksi"]["Order ID"].tolist() if not st.session_state["data_produksi"].empty else []
-                    new_id_num = 2400
-                    
-                    if existing_ids:
-                        numeric_ids = []
-                        for oid in existing_ids:
-                            if isinstance(oid, str) and "-" in oid:
-                                try:
-                                    numeric_part = oid.split("-")[1]
-                                    numeric_ids.append(int(numeric_part))
-                                except (ValueError, IndexError):
-                                    continue
-                        if numeric_ids:
-                            new_id_num = max(numeric_ids) + 1
-                    
+                    new_id_num = max([int(oid.split("-")[1]) for oid in existing_ids if "-" in oid], default=2400) + 1
                     new_order_id = f"ORD-{new_id_num}"
                     
-                    # Buat data baru dengan semua stage production
-                    new_data = {
-                        "Order ID": new_order_id,
-                        "Order Date": order_date,
-                        "Buyer": buyer,
-                        "Produk": produk,
-                        "Qty": qty,
-                        "Due Date": due_date,
-                        "Prioritas": prioritas,
-                        "Status": "Pending",
-                        "Progress": "0%",
-                        "Proses Saat Ini": "Pre-Order",
-                        "Keterangan": ""
-                    }
+                    new_data = pd.DataFrame({
+                        "Order ID": [new_order_id],
+                        "Order Date": [order_date],
+                        "Buyer": [buyer],
+                        "Produk": [produk],
+                        "Qty": [qty],
+                        "Due Date": [due_date],
+                        "Prioritas": [prioritas],
+                        "Status": ["Pending"],
+                        "Progress": ["0%"],
+                        "Proses Saat Ini": ["Pre Order"],
+                        "Keterangan": [""],
+                        "Tracking": [json.dumps(init_tracking_data(new_order_id))]
+                    })
                     
-                    # Tambahkan kolom untuk setiap stage production
-                    for stage in PRODUCTION_STAGES:
-                        new_data[stage] = None
-                    
-                    new_df = pd.DataFrame([new_data])
-                    
-                    # Concatenate dengan data yang ada
-                    if st.session_state["data_produksi"].empty:
-                        st.session_state["data_produksi"] = new_df
-                    else:
-                        st.session_state["data_produksi"] = pd.concat(
-                            [st.session_state["data_produksi"], new_df], ignore_index=True
-                        )
+                    st.session_state["data_produksi"] = pd.concat(
+                        [st.session_state["data_produksi"], new_data], ignore_index=True
+                    )
                     
                     if save_data(st.session_state["data_produksi"]):
                         st.success(f"✅ Order {new_order_id} berhasil ditambahkan!")
                         st.balloons()
-                        # Reset form
-                        st.rerun()
                 else:
                     st.warning("⚠️ Harap lengkapi data produk dan buyer!")
 
 # ===== MENU: DAFTAR ORDER =====
 elif st.session_state["menu"] == "Orders":
     st.header("📦 DAFTAR ORDER")
-    back_button()
     
     df = st.session_state["data_produksi"]
     
@@ -404,307 +241,248 @@ elif st.session_state["menu"] == "Orders":
         # Filter
         col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1:
-            filter_buyer = st.multiselect("Filter Buyer", df["Buyer"].unique() if "Buyer" in df.columns else [])
+            filter_buyer = st.multiselect("Filter Buyer", df["Buyer"].unique())
         with col_f2:
-            filter_status = st.multiselect("Filter Status", ["Accepted", "Pending", "Rejected", "In Progress", "Completed"], 
-                                         default=["Accepted", "Pending", "In Progress"])
+            filter_status = st.multiselect("Filter Status", ["Accepted", "Pending", "Rejected"], default=["Accepted", "Pending", "Rejected"])
         with col_f3:
             search_order = st.text_input("🔍 Cari Order ID / Produk")
         
-        # Apply filters
         df_filtered = df.copy()
-        if filter_buyer and "Buyer" in df_filtered.columns:
+        if filter_buyer:
             df_filtered = df_filtered[df_filtered["Buyer"].isin(filter_buyer)]
-        if filter_status and "Status" in df_filtered.columns:
+        if filter_status:
             df_filtered = df_filtered[df_filtered["Status"].isin(filter_status)]
         if search_order:
-            mask = False
-            if "Order ID" in df_filtered.columns:
-                mask = mask | df_filtered["Order ID"].str.contains(search_order, case=False, na=False)
-            if "Produk" in df_filtered.columns:
-                mask = mask | df_filtered["Produk"].str.contains(search_order, case=False, na=False)
-            df_filtered = df_filtered[mask]
+            df_filtered = df_filtered[
+                df_filtered["Order ID"].str.contains(search_order, case=False, na=False) | 
+                df_filtered["Produk"].str.contains(search_order, case=False, na=False)
+            ]
         
         st.markdown("---")
         
-        # Tampilkan data dalam tabel
-        display_columns = ["Order ID", "Order Date", "Buyer", "Produk", "Qty", "Due Date", "Status", "Progress", "Proses Saat Ini"]
-        display_columns = [col for col in display_columns if col in df_filtered.columns]
+        # Header
+        header_cols = st.columns([1, 1, 0.8, 1.5, 0.5, 1, 0.8, 1, 1, 0.6])
+        header_cols[0].markdown("**Order ID**")
+        header_cols[1].markdown("**Order Date**")
+        header_cols[2].markdown("**Buyer**")
+        header_cols[3].markdown("**Produk**")
+        header_cols[4].markdown("**Qty**")
+        header_cols[5].markdown("**Due Date**")
+        header_cols[6].markdown("**Status**")
+        header_cols[7].markdown("**Progress**")
+        header_cols[8].markdown("**Proses**")
+        header_cols[9].markdown("**Action**")
         
-        if not df_filtered.empty:
-            st.dataframe(
-                df_filtered[display_columns],
-                use_container_width=True,
-                hide_index=True
-            )
+        st.markdown("---")
+        
+        # Table with actions
+        for idx, row in df_filtered.iterrows():
+            cols = st.columns([1, 1, 0.8, 1.5, 0.5, 1, 0.8, 1, 1, 0.6])
             
-            # Actions untuk setiap order
-            st.subheader("🛠️ Order Actions")
-            selected_order_id = st.selectbox("Pilih Order untuk Action:", df_filtered["Order ID"].tolist())
+            cols[0].write(row['Order ID'])
+            cols[1].write(str(row['Order Date']))
+            cols[2].write(row['Buyer'])
+            cols[3].write(row['Produk'])
+            cols[4].write(row['Qty'])
+            cols[5].write(str(row['Due Date']))
             
-            if selected_order_id:
-                order_idx = df[df["Order ID"] == selected_order_id].index[0]
-                col_act1, col_act2, col_act3 = st.columns(3)
-                
-                with col_act1:
-                    if st.button("✏️ Edit Order", use_container_width=True):
-                        st.session_state["edit_order_idx"] = order_idx
-                        st.session_state["previous_menu"] = "Orders"
+            status_colors = {
+                "Accepted": "🟢",
+                "Pending": "🟡",
+                "Rejected": "🔴"
+            }
+            cols[6].write(f"{status_colors.get(row['Status'], '')} {row['Status']}")
+            
+            cols[7].write(row['Progress'])
+            cols[8].write(row['Proses Saat Ini'])
+            
+            with cols[9]:
+                btn_col1, btn_col2 = st.columns(2)
+                with btn_col1:
+                    if st.button("✏️", key=f"edit_{idx}", help="Edit"):
+                        st.session_state["edit_order_idx"] = idx
                         st.session_state["menu"] = "Progress"
                         st.rerun()
-                
-                with col_act2:
-                    if st.button("📍 Tracking", use_container_width=True):
-                        st.session_state["track_order_id"] = selected_order_id
-                        st.session_state["previous_menu"] = "Orders"
-                        st.session_state["menu"] = "Tracking"
+                with btn_col2:
+                    if st.button("🗑️", key=f"del_{idx}", help="Delete"):
+                        st.session_state["data_produksi"].drop(idx, inplace=True)
+                        st.session_state["data_produksi"].reset_index(drop=True, inplace=True)
+                        save_data(st.session_state["data_produksi"])
                         st.rerun()
-                
-                with col_act3:
-                    if st.button("🗑️ Hapus Order", use_container_width=True, type="secondary"):
-                        st.session_state["data_produksi"] = st.session_state["data_produksi"].drop(order_idx).reset_index(drop=True)
-                        if save_data(st.session_state["data_produksi"]):
-                            st.success(f"✅ Order {selected_order_id} berhasil dihapus!")
-                            st.rerun()
-        else:
-            st.info("Tidak ada order yang sesuai dengan filter")
+            
+            st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
     else:
         st.info("📝 Belum ada order yang diinput.")
 
 # ===== MENU: UPDATE PROGRESS =====
 elif st.session_state["menu"] == "Progress":
     st.header("⚙️ UPDATE PROGRESS PRODUKSI")
-    back_button()
     
     df = st.session_state["data_produksi"]
     
     if not df.empty:
         with st.container():
             st.markdown("""
-            <div style='background-color: #1E3A8A; padding: 10px; border-radius: 5px; margin-bottom: 20px;'>
-                <h3 style='color: white; text-align: center; margin: 0;'>UPDATE PROGRESS PRODUKSI</h3>
+            <div style='background-color: #1E3A8A; padding: 15px; border-radius: 8px; margin-bottom: 25px;'>
+                <h3 style='color: white; text-align: center; margin: 0;'>FORM UPDATE PROGRESS</h3>
             </div>
             """, unsafe_allow_html=True)
             
             # Pilih order
-            order_ids = df["Order ID"].tolist() if "Order ID" in df.columns else []
-            if not order_ids:
-                st.info("Tidak ada order yang tersedia")
-                st.stop()
-                
-            selected_order = st.selectbox("Pilih Order ID", order_ids, key="progress_order_select")
+            order_ids = df["Order ID"].tolist()
+            
+            # Cek jika ada order yang di-edit dari menu Orders
+            default_idx = 0
+            if "edit_order_idx" in st.session_state:
+                edit_order_id = df.iloc[st.session_state["edit_order_idx"]]["Order ID"]
+                default_idx = order_ids.index(edit_order_id)
+                del st.session_state["edit_order_idx"]
+            
+            selected_order = st.selectbox("Pilih Order ID", order_ids, index=default_idx, key="progress_order_select")
             
             if selected_order:
                 order_data = df[df["Order ID"] == selected_order].iloc[0]
                 order_idx = df[df["Order ID"] == selected_order].index[0]
                 
-                # Layout yang lebih rapi
-                col1, col2 = st.columns([1, 2])
+                col1, col2 = st.columns([1, 3])
                 
                 with col1:
-                    st.markdown("**ORDER ID**")
-                    st.markdown("**PRODUK**")
-                    st.markdown("**PROSES SAAT INI**")
-                    st.markdown("**PERSENTASE PROGRESS**")
-                    st.markdown("**CATATAN**")
+                    st.markdown("<div style='padding-top: 8px;'><b>Order ID</b></div>", unsafe_allow_html=True)
+                    st.markdown("<div style='padding-top: 8px;'><b>Product</b></div>", unsafe_allow_html=True)
+                    st.markdown("<div style='padding-top: 8px;'><b>Proses Saat Ini</b></div>", unsafe_allow_html=True)
+                    st.markdown("<div style='padding-top: 8px;'><b>Status Order</b></div>", unsafe_allow_html=True)
+                    st.markdown("<div style='padding-top: 8px;'><b>Persentase Progress</b></div>", unsafe_allow_html=True)
+                    st.markdown("<div style='padding-top: 30px;'><b>Catatan</b></div>", unsafe_allow_html=True)
                 
                 with col2:
-                    # Order ID dan Produk tidak bisa diubah
-                    st.text_input("Order ID", value=order_data.get("Order ID", ""), disabled=True, label_visibility="collapsed", key="prog_order_id")
-                    st.text_input("Produk", value=order_data.get("Produk", ""), disabled=True, label_visibility="collapsed", key="prog_product")
+                    st.text_input("", value=order_data["Order ID"], disabled=True, label_visibility="collapsed", key="prog_order_id")
+                    st.text_input("", value=order_data["Produk"], disabled=True, label_visibility="collapsed", key="prog_product")
                     
-                    current_process = order_data.get("Proses Saat Ini", "Pre-Order")
-                    current_proses = st.selectbox("Proses Saat Ini", PRODUCTION_STAGES, 
-                                                  index=PRODUCTION_STAGES.index(current_process) if current_process in PRODUCTION_STAGES else 0,
+                    proses_list = get_tracking_stages()
+                    current_proses = st.selectbox("", proses_list, 
+                                                  index=proses_list.index(order_data["Proses Saat Ini"]) if order_data["Proses Saat Ini"] in proses_list else 0,
                                                   label_visibility="collapsed", key="prog_proses")
                     
-                    # Hitung progress berdasarkan stage
-                    completed_stages = sum(1 for stage in PRODUCTION_STAGES 
-                                         if pd.notna(order_data.get(stage)) and order_data[stage] is not None)
-                    current_progress = (completed_stages / len(PRODUCTION_STAGES)) * 100
+                    status_order = st.selectbox("", ["Pending", "Accepted", "Rejected"], 
+                                               index=["Pending", "Accepted", "Rejected"].index(order_data["Status"]),
+                                               label_visibility="collapsed", key="prog_status")
                     
-                    progress = st.slider("Progress", 0, 100, int(current_progress), 
-                                        label_visibility="collapsed", key="prog_percentage")
-                    st.write(f"**Progress: {progress}%**")
+                    progress = st.slider("", 0, 100, int(order_data["Progress"].rstrip('%')), label_visibility="collapsed", key="prog_percentage")
+                    st.markdown(f"<h2 style='color: #1E3A8A;'>{progress}%</h2>", unsafe_allow_html=True)
                     
-                    notes = st.text_area("Catatan", value=order_data.get("Keterangan", ""), 
-                                        placeholder="Masukkan catatan produksi...", 
+                    notes = st.text_area("", value=order_data["Keterangan"], placeholder="Masukkan catatan...", 
                                         label_visibility="collapsed", key="prog_notes", height=100)
                 
                 st.markdown("")
                 col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
                 
                 with col_btn1:
-                    if st.button("🔄 Reset Form", use_container_width=True):
+                    if st.button("🔄 RESET", use_container_width=True):
                         st.rerun()
                 
                 with col_btn2:
-                    if st.button("💾 Simpan Perubahan", use_container_width=True, type="primary"):
-                        # Update progress
+                    if st.button("💾 SAVE PROGRESS", use_container_width=True, type="primary"):
                         st.session_state["data_produksi"].at[order_idx, "Progress"] = f"{progress}%"
                         st.session_state["data_produksi"].at[order_idx, "Proses Saat Ini"] = current_proses
                         st.session_state["data_produksi"].at[order_idx, "Keterangan"] = notes
-                        
-                        # Update status berdasarkan progress
-                        if progress == 100:
-                            st.session_state["data_produksi"].at[order_idx, "Status"] = "Completed"
-                        elif progress > 0:
-                            st.session_state["data_produksi"].at[order_idx, "Status"] = "In Progress"
+                        st.session_state["data_produksi"].at[order_idx, "Status"] = status_order
                         
                         if save_data(st.session_state["data_produksi"]):
                             st.success(f"✅ Progress order {selected_order} berhasil diupdate!")
+                            st.balloons()
     else:
         st.info("📝 Belum ada order untuk diupdate.")
 
-# ===== MENU: PRODUCTION TRACKING =====
+# ===== MENU: TRACKING PRODUKSI =====
 elif st.session_state["menu"] == "Tracking":
-    st.header("📍 PRODUCTION TRACKING")
-    back_button()
+    st.header("🔍 TRACKING PRODUKSI")
     
     df = st.session_state["data_produksi"]
     
     if not df.empty:
-        # Pilih order untuk tracking
-        order_ids = df["Order ID"].tolist() if "Order ID" in df.columns else []
-        if not order_ids:
-            st.info("Tidak ada order yang tersedia")
-            st.stop()
-            
-        selected_order_id = st.selectbox("Pilih Order untuk Tracking:", order_ids, 
-                                       key="tracking_order_select")
+        selected_order = st.selectbox("Pilih Order untuk Tracking", df["Order ID"].tolist())
         
-        if selected_order_id:
-            order_data = df[df["Order ID"] == selected_order_id].iloc[0]
+        if selected_order:
+            order_data = df[df["Order ID"] == selected_order].iloc[0]
+            order_idx = df[df["Order ID"] == selected_order].index[0]
             
-            st.subheader(f"Tracking Order: {selected_order_id}")
-            st.write(f"**Produk:** {order_data.get('Produk', 'N/A')} | **Buyer:** {order_data.get('Buyer', 'N/A')} | **Qty:** {order_data.get('Qty', 'N/A')}")
+            st.markdown(f"### Order: {selected_order} - {order_data['Produk']}")
+            st.markdown(f"**Buyer:** {order_data['Buyer']} | **Qty:** {order_data['Qty']} pcs | **Status:** {order_data['Status']}")
             
-            # Progress tracking timeline
-            st.markdown("### 📋 Timeline Produksi")
+            st.markdown("---")
             
-            completed_stages = 0
-            for i, stage in enumerate(PRODUCTION_STAGES):
-                col1, col2, col3 = st.columns([1, 3, 2])
-                
-                with col1:
-                    # Status indicator
-                    stage_date = order_data.get(stage)
-                    if pd.notna(stage_date) and stage_date is not None:
-                        st.success("✅")
-                        completed_stages += 1
-                    else:
-                        st.info("⏳")
-                
-                with col2:
-                    st.write(f"**{stage}**")
-                
-                with col3:
-                    if pd.notna(stage_date) and stage_date is not None:
-                        if isinstance(stage_date, str):
-                            try:
-                                stage_date = pd.to_datetime(stage_date)
-                                st.write(f"Selesai: {stage_date.strftime('%d/%m/%Y')}")
-                            except:
-                                st.write(f"Selesai: {stage_date}")
-                        else:
-                            st.write(f"Selesai: {stage_date.strftime('%d/%m/%Y')}")
-                    else:
-                        st.write("Belum dimulai")
+            # Load tracking data
+            tracking_data = json.loads(order_data.get("Tracking", "{}")) if "Tracking" in order_data and order_data["Tracking"] else init_tracking_data(selected_order)
             
-            # Progress bar
-            total_stages = len(PRODUCTION_STAGES)
-            progress_percent = (completed_stages / total_stages) * 100 if total_stages > 0 else 0
+            stages = get_tracking_stages()
             
-            st.markdown("### 📊 Overall Progress")
-            st.progress(progress_percent / 100)
-            st.write(f"**{completed_stages}/{total_stages} stages completed ({progress_percent:.1f}%)**")
+            # Update tracking UI
+            st.subheader("📋 Status Tracking per Tahapan")
             
-            # Update stage progress
-            st.markdown("### 🛠️ Update Stage Progress")
-            current_stage = st.selectbox("Pilih Stage untuk Update:", PRODUCTION_STAGES)
-            update_date = st.date_input("Tanggal Penyelesaian:", datetime.now().date())
+            for i, stage in enumerate(stages):
+                with st.expander(f"{'✅' if tracking_data.get(stage, {}).get('status') == 'Completed' else '⏳'} {i+1}. {stage}", expanded=(tracking_data.get(stage, {}).get('status') == 'In Progress')):
+                    col1, col2, col3 = st.columns([2, 2, 1])
+                    
+                    with col1:
+                        stage_status = st.selectbox(
+                            "Status",
+                            ["Pending", "In Progress", "Completed"],
+                            index=["Pending", "In Progress", "Completed"].index(tracking_data.get(stage, {}).get('status', 'Pending')),
+                            key=f"track_status_{i}"
+                        )
+                    
+                    with col2:
+                        stage_date = st.date_input(
+                            "Tanggal",
+                            value=datetime.datetime.strptime(tracking_data.get(stage, {}).get('date'), '%Y-%m-%d').date() if tracking_data.get(stage, {}).get('date') else datetime.date.today(),
+                            key=f"track_date_{i}"
+                        )
+                    
+                    with col3:
+                        if st.button("💾 Save", key=f"track_save_{i}"):
+                            tracking_data[stage] = {
+                                "status": stage_status,
+                                "date": str(stage_date)
+                            }
+                            st.session_state["data_produksi"].at[order_idx, "Tracking"] = json.dumps(tracking_data)
+                            
+                            # Update proses saat ini
+                            if stage_status == "In Progress":
+                                st.session_state["data_produksi"].at[order_idx, "Proses Saat Ini"] = stage
+                            
+                            save_data(st.session_state["data_produksi"])
+                            st.success(f"✅ Tracking {stage} updated!")
+                            st.rerun()
             
-            if st.button("✅ Tandai Stage Selesai", type="primary"):
-                order_idx = df[df["Order ID"] == selected_order_id].index[0]
-                st.session_state["data_produksi"].at[order_idx, current_stage] = datetime.now()
-                st.session_state["data_produksi"].at[order_idx, "Proses Saat Ini"] = current_stage
-                
-                # Update progress percentage
-                new_completed = 0
-                for stage in PRODUCTION_STAGES:
-                    stage_date = st.session_state["data_produksi"].at[order_idx, stage]
-                    if pd.notna(stage_date) and stage_date is not None:
-                        new_completed += 1
-                
-                new_progress = (new_completed / total_stages) * 100
-                st.session_state["data_produksi"].at[order_idx, "Progress"] = f"{new_progress:.0f}%"
-                
-                if save_data(st.session_state["data_produksi"]):
-                    st.success(f"✅ Stage {current_stage} berhasil ditandai selesai!")
-                    st.rerun()
+            # Progress visualization
+            st.markdown("---")
+            st.subheader("📊 Progress Timeline")
+            
+            completed_stages = sum(1 for stage in stages if tracking_data.get(stage, {}).get('status') == 'Completed')
+            progress_pct = (completed_stages / len(stages)) * 100
+            
+            st.progress(progress_pct / 100)
+            st.markdown(f"**Progress: {completed_stages}/{len(stages)} tahapan selesai ({progress_pct:.0f}%)**")
     else:
-        st.info("📝 Belum ada order untuk ditracking.")
-
-# ===== MENU: GANTT CHART =====
-elif st.session_state["menu"] == "GanttChart":
-    st.header("📈 GANTT CHART PRODUKSI")
-    back_button()
-    
-    df = st.session_state["data_produksi"]
-    
-    if not df.empty:
-        # Filter untuk order yang memiliki progress
-        has_progress = []
-        for _, order in df.iterrows():
-            has_any_progress = any(
-                pd.notna(order.get(stage)) and order[stage] is not None 
-                for stage in PRODUCTION_STAGES
-            )
-            has_progress.append(has_any_progress)
-        
-        df_with_progress = df[has_progress]
-        
-        if not df_with_progress.empty:
-            tab1, tab2 = st.tabs(["Gantt Chart", "Progress Chart"])
-            
-            with tab1:
-                st.subheader("Gantt Chart Timeline Produksi")
-                gantt_fig = create_gantt_chart(df_with_progress)
-                if gantt_fig:
-                    st.plotly_chart(gantt_fig, use_container_width=True)
-                else:
-                    st.info("📊 Tidak ada data timeline yang dapat ditampilkan dalam Gantt Chart.")
-            
-            with tab2:
-                st.subheader("Progress Chart")
-                progress_fig = create_progress_chart(df_with_progress)
-                if progress_fig:
-                    st.plotly_chart(progress_fig, use_container_width=True)
-                else:
-                    st.info("📈 Tidak ada data progress yang dapat ditampilkan.")
-        else:
-            st.info("📝 Belum ada data progress produksi untuk ditampilkan dalam chart.")
-    else:
-        st.info("📝 Belum ada data order.")
+        st.info("📝 Belum ada order untuk di-tracking.")
 
 # ===== MENU: FROZEN ZONE =====
 elif st.session_state["menu"] == "Frozen":
     st.header("❄️ FROZEN ZONE")
-    back_button()
     
     st.markdown("""
-    <div style='background-color: #1E3A8A; padding: 10px; border-radius: 5px; margin-bottom: 20px;'>
-        <h3 style='color: white; text-align: center; margin: 0;'>❄️ FROZEN ZONE</h3>
+    <div style='background-color: #1E3A8A; padding: 15px; border-radius: 8px; margin-bottom: 25px;'>
+        <h3 style='color: white; text-align: center; margin: 0;'>❄️ PENGATURAN FROZEN ZONE</h3>
     </div>
     """, unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("### START")
-        frozen_start = st.date_input("Tanggal Mulai", value=st.session_state["frozen_start"], label_visibility="collapsed", key="frozen_start_input")
+        st.markdown("### START DATE")
+        frozen_start = st.date_input("", value=st.session_state["frozen_start"], label_visibility="collapsed", key="frozen_start_input")
     with col2:
-        st.markdown("### UNTIL")
-        frozen_end = st.date_input("Tanggal Akhir", value=st.session_state["frozen_end"], label_visibility="collapsed", key="frozen_end_input")
+        st.markdown("### END DATE")
+        frozen_end = st.date_input("", value=st.session_state["frozen_end"], label_visibility="collapsed", key="frozen_end_input")
     
     if st.button("💾 Set Frozen Period", type="primary"):
         st.session_state["frozen_start"] = frozen_start
@@ -715,143 +493,166 @@ elif st.session_state["menu"] == "Frozen":
     st.subheader("📦 Order in Frozen Zone")
     
     df = st.session_state["data_produksi"]
-    if not df.empty and "Due Date" in df.columns:
-        # Filter orders dalam frozen zone
-        try:
-            df_frozen = df[
-                (df["Due Date"] >= frozen_start) & 
-                (df["Due Date"] <= frozen_end)
-            ]
-            
-            if not df_frozen.empty:
-                display_cols = ["Order ID", "Produk", "Qty", "Due Date", "Status", "Proses Saat Ini"]
-                display_cols = [col for col in display_cols if col in df_frozen.columns]
-                
-                st.dataframe(df_frozen[display_cols], use_container_width=True, hide_index=True)
-                
-                # Summary
-                col_sum1, col_sum2, col_sum3 = st.columns(3)
-                with col_sum1:
-                    st.metric("Total Order Frozen", len(df_frozen))
-                with col_sum2:
-                    total_qty_frozen = df_frozen["Qty"].sum() if "Qty" in df_frozen.columns else 0
-                    st.metric("Total Quantity", f"{total_qty_frozen:,} pcs")
-                with col_sum3:
-                    high_priority = len(df_frozen[df_frozen["Prioritas"] == "High"]) if "Prioritas" in df_frozen.columns else 0
-                    st.metric("High Priority", high_priority)
-                
-                st.warning(f"⚠️ {len(df_frozen)} order berada dalam frozen zone ({frozen_start} hingga {frozen_end})!")
-            else:
-                st.info("✅ Tidak ada order dalam frozen zone.")
-        except Exception as e:
-            st.error(f"Error filtering frozen zone: {e}")
+    if not df.empty:
+        df_frozen = df[
+            (df["Due Date"] >= frozen_start) & 
+            (df["Due Date"] <= frozen_end)
+        ]
+        
+        if not df_frozen.empty:
+            st.dataframe(df_frozen[["Order ID", "Buyer", "Produk", "Qty", "Due Date", "Status", "Progress"]], 
+                        use_container_width=True, hide_index=True)
+            st.warning(f"⚠️ {len(df_frozen)} order berada dalam frozen zone!")
+        else:
+            st.info("✅ Tidak ada order dalam frozen zone.")
     else:
         st.info("📝 Belum ada data order.")
 
-# ===== MENU: ANALYTICS =====
-elif st.session_state["menu"] == "Analytics":
-    st.header("📊 ANALISIS & LAPORAN")
-    back_button()
+# ===== MENU: GANTT CHART =====
+elif st.session_state["menu"] == "Gantt":
+    st.header("📊 GANTT CHART PRODUKSI")
     
     df = st.session_state["data_produksi"]
     
     if not df.empty:
-        tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "👥 By Buyer", "📦 By Product", "🚀 Performance"])
+        # Prepare data for Gantt chart
+        gantt_data = []
+        for idx, row in df.iterrows():
+            gantt_data.append(dict(
+                Task=f"{row['Order ID']} - {row['Produk'][:20]}",
+                Start=row['Order Date'],
+                Finish=row['Due Date'],
+                Resource=row['Buyer']
+            ))
+        
+        # Create Gantt chart
+        if gantt_data:
+            fig = ff.create_gantt(
+                gantt_data,
+                colors=['#1E3A8A', '#3B82F6', '#60A5FA', '#93C5FD'],
+                index_col='Resource',
+                show_colorbar=True,
+                group_tasks=True,
+                showgrid_x=True,
+                showgrid_y=True,
+                title='Production Schedule Gantt Chart'
+            )
+            fig.update_layout(height=600, xaxis_title="Timeline", yaxis_title="Orders")
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Summary table
+            st.markdown("---")
+            st.subheader("📋 Order Timeline Summary")
+            summary_df = df[["Order ID", "Produk", "Buyer", "Order Date", "Due Date", "Status", "Progress"]].copy()
+            summary_df["Duration (days)"] = (pd.to_datetime(summary_df["Due Date"]) - pd.to_datetime(summary_df["Order Date"])).dt.days
+            st.dataframe(summary_df, use_container_width=True, hide_index=True)
+        else:
+            st.warning("Tidak ada data untuk ditampilkan dalam Gantt Chart")
+    else:
+        st.info("📝 Belum ada data untuk membuat Gantt Chart.")
+
+# ===== MENU: ANALYTICS =====
+elif st.session_state["menu"] == "Analytics":
+    st.header("📈 ANALISIS & LAPORAN")
+    
+    df = st.session_state["data_produksi"]
+    
+    if not df.empty:
+        tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "👥 By Buyer", "📦 By Product", "📅 By Timeline"])
         
         with tab1:
             st.subheader("Performance Overview")
             col1, col2, col3, col4 = st.columns(4)
             
-            total_qty = df["Qty"].sum() if "Qty" in df.columns else 0
-            on_time_orders = len(df[df["Due Date"] >= datetime.now().date()]) if "Due Date" in df.columns else 0
-            
-            # Hitung completion rate berdasarkan stage production
-            completion_rates = []
-            for _, order in df.iterrows():
-                completed_stages = 0
-                for stage in PRODUCTION_STAGES:
-                    stage_date = order.get(stage)
-                    if pd.notna(stage_date) and stage_date is not None:
-                        completed_stages += 1
-                completion_rate = (completed_stages / len(PRODUCTION_STAGES)) * 100
-                completion_rates.append(completion_rate)
-            
-            avg_completion = sum(completion_rates) / len(completion_rates) if completion_rates else 0
-            delayed_orders = len(df[df["Due Date"] < datetime.now().date()]) if "Due Date" in df.columns else 0
+            total_qty = df["Qty"].sum()
+            on_time_orders = len(df[df["Due Date"] >= datetime.date.today()])
+            completion_rate = (df["Progress"].str.rstrip('%').astype('float').mean())
+            total_buyers = df["Buyer"].nunique()
             
             col1.metric("Total Quantity", f"{total_qty:,} pcs")
             col2.metric("On-Time Orders", on_time_orders)
-            col3.metric("Avg Completion", f"{avg_completion:.1f}%")
-            col4.metric("Delayed Orders", delayed_orders, delta=f"-{delayed_orders}" if delayed_orders > 0 else "0")
+            col3.metric("Avg Completion", f"{completion_rate:.1f}%")
+            col4.metric("Total Buyers", total_buyers)
+            
+            st.markdown("---")
+            
+            # Status distribution chart
+            col_chart1, col_chart2 = st.columns(2)
+            
+            with col_chart1:
+                status_count = df["Status"].value_counts()
+                fig_status = px.bar(x=status_count.index, y=status_count.values,
+                                   labels={'x': 'Status', 'y': 'Count'},
+                                   title="Orders by Status",
+                                   color=status_count.values,
+                                   color_continuous_scale='Viridis')
+                st.plotly_chart(fig_status, use_container_width=True)
+            
+            with col_chart2:
+                priority_count = df["Prioritas"].value_counts()
+                fig_priority = px.pie(values=priority_count.values, names=priority_count.index,
+                                     title="Orders by Priority",
+                                     color_discrete_sequence=px.colors.qualitative.Set2)
+                st.plotly_chart(fig_priority, use_container_width=True)
         
         with tab2:
             st.subheader("Analysis by Buyer")
-            if "Buyer" in df.columns:
-                buyer_stats = df.groupby("Buyer").agg({
-                    "Order ID": "count",
-                    "Qty": "sum",
-                    "Prioritas": lambda x: (x == "High").sum() if "Prioritas" in df.columns else 0
-                }).rename(columns={
-                    "Order ID": "Total Orders", 
-                    "Qty": "Total Qty",
-                    "Prioritas": "High Priority Orders"
-                })
-                
-                st.dataframe(buyer_stats, use_container_width=True)
-                
-                if not buyer_stats.empty:
-                    fig_buyer = px.bar(buyer_stats, x=buyer_stats.index, y="Total Orders",
-                                      title="Total Orders per Buyer",
-                                      color="Total Orders")
-                    st.plotly_chart(fig_buyer, use_container_width=True)
-            else:
-                st.info("Kolom Buyer tidak ditemukan")
+            buyer_stats = df.groupby("Buyer").agg({
+                "Order ID": "count",
+                "Qty": "sum",
+                "Progress": lambda x: x.str.rstrip('%').astype('float').mean()
+            }).rename(columns={"Order ID": "Total Orders", "Qty": "Total Qty", "Progress": "Avg Progress"})
+            buyer_stats["Avg Progress"] = buyer_stats["Avg Progress"].round(1).astype(str) + "%"
+            
+            st.dataframe(buyer_stats, use_container_width=True)
+            
+            # Bar chart
+            fig_buyer = px.bar(buyer_stats, y="Total Orders", 
+                              labels={'index': 'Buyer', 'Total Orders': 'Jumlah Order'},
+                              title="Total Orders per Buyer",
+                              color="Total Orders",
+                              color_continuous_scale='Blues')
+            st.plotly_chart(fig_buyer, use_container_width=True)
         
         with tab3:
             st.subheader("Analysis by Product")
-            if "Produk" in df.columns:
-                product_stats = df.groupby("Produk").agg({
-                    "Order ID": "count",
-                    "Qty": "sum"
-                }).rename(columns={"Order ID": "Total Orders", "Qty": "Total Qty"})
-                
-                st.dataframe(product_stats, use_container_width=True)
-                
-                if not product_stats.empty:
-                    fig_product = px.pie(product_stats, values="Total Qty", names=product_stats.index,
-                                        title="Distribusi Quantity per Produk")
-                    st.plotly_chart(fig_product, use_container_width=True)
-            else:
-                st.info("Kolom Produk tidak ditemukan")
+            product_stats = df.groupby("Produk").agg({
+                "Order ID": "count",
+                "Qty": "sum"
+            }).rename(columns={"Order ID": "Total Orders", "Qty": "Total Qty"})
+            product_stats = product_stats.sort_values("Total Orders", ascending=False).head(10)
+            
+            st.dataframe(product_stats, use_container_width=True)
+            
+            # Bar chart
+            fig_product = px.bar(product_stats, y="Total Qty",
+                               labels={'index': 'Produk', 'Total Qty': 'Total Quantity'},
+                               title="Top 10 Products by Quantity",
+                               color="Total Qty",
+                               color_continuous_scale='Greens')
+            st.plotly_chart(fig_product, use_container_width=True)
         
         with tab4:
-            st.subheader("Production Performance")
+            st.subheader("Analysis by Timeline")
             
-            # Stage completion analysis
-            stage_completion = {}
-            for stage in PRODUCTION_STAGES:
-                completed = 0
-                for _, order in df.iterrows():
-                    stage_date = order.get(stage)
-                    if pd.notna(stage_date) and stage_date is not None:
-                        completed += 1
-                stage_completion[stage] = completed
+            # Orders by month
+            df_copy = df.copy()
+            df_copy['Order Month'] = pd.to_datetime(df_copy['Order Date']).dt.to_period('M').astype(str)
+            monthly_orders = df_copy.groupby('Order Month').agg({
+                'Order ID': 'count',
+                'Qty': 'sum'
+            }).rename(columns={'Order ID': 'Total Orders', 'Qty': 'Total Qty'})
             
-            stage_df = pd.DataFrame({
-                'Stage': list(stage_completion.keys()),
-                'Completed': list(stage_completion.values()),
-                'Completion Rate': [f"{(count/len(df)*100):.1f}%" for count in stage_completion.values()]
-            })
+            st.dataframe(monthly_orders, use_container_width=True)
             
-            st.dataframe(stage_df, use_container_width=True, hide_index=True)
-            
-            fig_stage = px.bar(stage_df, x='Stage', y='Completed', 
-                              title='Stage Completion Analysis',
-                              color='Completed')
-            fig_stage.update_xaxes(tickangle=45)
-            st.plotly_chart(fig_stage, use_container_width=True)
+            # Line chart
+            fig_timeline = px.line(monthly_orders, y=['Total Orders', 'Total Qty'],
+                                  labels={'value': 'Count', 'Order Month': 'Month'},
+                                  title="Orders & Quantity Trend by Month",
+                                  markers=True)
+            st.plotly_chart(fig_timeline, use_container_width=True)
         
-        # Export
+        # Export section
         st.markdown("---")
         st.subheader("💾 Export Laporan")
         col_exp1, col_exp2, col_exp3 = st.columns(3)
@@ -859,48 +660,31 @@ elif st.session_state["menu"] == "Analytics":
         with col_exp1:
             csv_data = df.to_csv(index=False).encode("utf-8")
             st.download_button(
-                label="📄 Download CSV Report",
+                label="📄 Download CSV",
                 data=csv_data,
-                file_name=f"ppic_report_{datetime.now().date()}.csv",
+                file_name=f"ppic_report_{datetime.date.today()}.csv",
                 mime="text/csv",
                 use_container_width=True
             )
         
         with col_exp2:
-            json_data = df.to_json(orient='records', indent=2, force_ascii=False)
+            json_data = df.to_json(orient='records', indent=2, date_format='iso')
             st.download_button(
-                label="📋 Download JSON Report",
+                label="📋 Download JSON",
                 data=json_data,
-                file_name=f"ppic_report_{datetime.now().date()}.json",
+                file_name=f"ppic_report_{datetime.date.today()}.json",
                 mime="application/json",
                 use_container_width=True
             )
         
         with col_exp3:
-            # Buat summary report
-            summary_report = f"""
-PPIC PRODUCTION REPORT
-Generated: {datetime.now().date()}
-
-SUMMARY:
-- Total Orders: {len(df)}
-- Total Quantity: {total_qty:,} pcs
-- Average Completion: {avg_completion:.1f}%
-- On-Time Orders: {on_time_orders}
-- Delayed Orders: {delayed_orders}
-
-STAGE COMPLETION:
-"""
-            for stage in PRODUCTION_STAGES:
-                completed = stage_completion.get(stage, 0)
-                rate = (completed / len(df)) * 100 if len(df) > 0 else 0
-                summary_report += f"- {stage}: {rate:.1f}% ({completed}/{len(df)})\n"
-
+            # Excel export (sebagai CSV karena tidak perlu library tambahan)
+            excel_data = df.to_csv(index=False).encode("utf-8")
             st.download_button(
-                label="📝 Download Summary Report",
-                data=summary_report,
-                file_name=f"ppic_summary_{datetime.now().date()}.txt",
-                mime="text/plain",
+                label="📊 Download Excel (CSV)",
+                data=excel_data,
+                file_name=f"ppic_report_{datetime.date.today()}.csv",
+                mime="text/csv",
                 use_container_width=True
             )
     else:
@@ -908,4 +692,5 @@ STAGE COMPLETION:
 
 # Footer
 st.markdown("---")
-st.caption(f"© 2025 PPIC-DSS System | v4.0 | 💾 Data: {DATABASE_PATH} | 🏭 Production Stages: {len(PRODUCTION_STAGES)}")
+st.caption(f"© 2025 PPIC-DSS System | v4.0 Enhanced | 💾 Database: {DATABASE_PATH}")
+st.caption("Features: Dashboard, Input Order, Order List, Progress Update, Production Tracking, Frozen Zone, Analytics, Gantt Chart")
