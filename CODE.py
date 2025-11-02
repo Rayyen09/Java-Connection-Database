@@ -171,15 +171,28 @@ elif st.session_state["menu"] == "Input":
         </div>
         """, unsafe_allow_html=True)
         
+        # Custom CSS untuk alignment yang sempurna
+        st.markdown("""
+        <style>
+        .label-row {
+            display: flex;
+            align-items: center;
+            height: 38px;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
         col1, col2 = st.columns([1, 3])
         
         with col1:
-            st.markdown("<div style='padding-top: 8px;'><b>Order Date</b></div>", unsafe_allow_html=True)
-            st.markdown("<div style='padding-top: 8px;'><b>Buyer Name</b></div>", unsafe_allow_html=True)
-            st.markdown("<div style='padding-top: 8px;'><b>Produk</b></div>", unsafe_allow_html=True)
-            st.markdown("<div style='padding-top: 8px;'><b>Jumlah (pcs)</b></div>", unsafe_allow_html=True)
-            st.markdown("<div style='padding-top: 8px;'><b>Due Date</b></div>", unsafe_allow_html=True)
-            st.markdown("<div style='padding-top: 8px;'><b>Prioritas</b></div>", unsafe_allow_html=True)
+            st.markdown("<div class='label-row'>Order Date</div>", unsafe_allow_html=True)
+            st.markdown("<div class='label-row'>Buyer Name</div>", unsafe_allow_html=True)
+            st.markdown("<div class='label-row'>Produk</div>", unsafe_allow_html=True)
+            st.markdown("<div class='label-row'>Jumlah (pcs)</div>", unsafe_allow_html=True)
+            st.markdown("<div class='label-row'>Due Date</div>", unsafe_allow_html=True)
+            st.markdown("<div class='label-row'>Prioritas</div>", unsafe_allow_html=True)
         
         with col2:
             order_date = st.date_input("", datetime.date.today(), label_visibility="collapsed", key="input_order_date")
@@ -344,15 +357,42 @@ elif st.session_state["menu"] == "Progress":
                 order_data = df[df["Order ID"] == selected_order].iloc[0]
                 order_idx = df[df["Order ID"] == selected_order].index[0]
                 
+                # Custom CSS untuk alignment yang sempurna
+                st.markdown("""
+                <style>
+                .progress-label-row {
+                    display: flex;
+                    align-items: center;
+                    height: 38px;
+                    margin-bottom: 8px;
+                    font-weight: bold;
+                }
+                .progress-slider-label {
+                    display: flex;
+                    align-items: center;
+                    height: 70px;
+                    margin-bottom: 8px;
+                    font-weight: bold;
+                }
+                .progress-textarea-label {
+                    display: flex;
+                    align-items: flex-start;
+                    padding-top: 8px;
+                    margin-bottom: 8px;
+                    font-weight: bold;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+                
                 col1, col2 = st.columns([1, 3])
                 
                 with col1:
-                    st.markdown("<div style='padding-top: 8px;'><b>Order ID</b></div>", unsafe_allow_html=True)
-                    st.markdown("<div style='padding-top: 8px;'><b>Product</b></div>", unsafe_allow_html=True)
-                    st.markdown("<div style='padding-top: 8px;'><b>Proses Saat Ini</b></div>", unsafe_allow_html=True)
-                    st.markdown("<div style='padding-top: 8px;'><b>Status Order</b></div>", unsafe_allow_html=True)
-                    st.markdown("<div style='padding-top: 8px;'><b>Persentase Progress</b></div>", unsafe_allow_html=True)
-                    st.markdown("<div style='padding-top: 30px;'><b>Catatan</b></div>", unsafe_allow_html=True)
+                    st.markdown("<div class='progress-label-row'>Order ID</div>", unsafe_allow_html=True)
+                    st.markdown("<div class='progress-label-row'>Product</div>", unsafe_allow_html=True)
+                    st.markdown("<div class='progress-label-row'>Proses Saat Ini</div>", unsafe_allow_html=True)
+                    st.markdown("<div class='progress-label-row'>Status Order</div>", unsafe_allow_html=True)
+                    st.markdown("<div class='progress-slider-label'>Persentase Progress</div>", unsafe_allow_html=True)
+                    st.markdown("<div class='progress-textarea-label'>Catatan</div>", unsafe_allow_html=True)
                 
                 with col2:
                     st.text_input("", value=order_data["Order ID"], disabled=True, label_visibility="collapsed", key="prog_order_id")
@@ -368,7 +408,7 @@ elif st.session_state["menu"] == "Progress":
                                                label_visibility="collapsed", key="prog_status")
                     
                     progress = st.slider("", 0, 100, int(order_data["Progress"].rstrip('%')), label_visibility="collapsed", key="prog_percentage")
-                    st.markdown(f"<h2 style='color: #1E3A8A;'>{progress}%</h2>", unsafe_allow_html=True)
+                    st.markdown(f"<h2 style='color: #1E3A8A; margin-top: -10px;'>{progress}%</h2>", unsafe_allow_html=True)
                     
                     notes = st.text_area("", value=order_data["Keterangan"], placeholder="Masukkan catatan...", 
                                         label_visibility="collapsed", key="prog_notes", height=100)
