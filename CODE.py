@@ -3,13 +3,11 @@ import pandas as pd
 import datetime
 import json
 import os
-from pathlib import Path
 
 # ===== KONFIGURASI DATABASE =====
-# GANTI PATH INI SESUAI LOKASI ANDA
-DATABASE_PATH = "ppic_data.json"  # Bisa juga: "C:/Users/YourName/Documents/ppic_data.json"
+DATABASE_PATH = "ppic_data.json"
 
-st.set_page_config(page_title="PPIC-DSS Input System", layout="wide", page_icon="🏭")
+st.set_page_config(page_title="PPIC-DSS System", layout="wide", page_icon="🏭")
 
 # ===== FUNGSI DATABASE =====
 def load_data():
@@ -19,30 +17,23 @@ def load_data():
             with open(DATABASE_PATH, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 df = pd.DataFrame(data)
-                # Konversi tanggal dari string ke date
                 if not df.empty:
-                    df['Start Date'] = pd.to_datetime(df['Start Date']).dt.date
-                    df['End Date'] = pd.to_datetime(df['End Date']).dt.date
+                    df['Order Date'] = pd.to_datetime(df['Order Date']).dt.date
+                    df['Due Date'] = pd.to_datetime(df['Due Date']).dt.date
                 return df
         except Exception as e:
             st.error(f"Error loading data: {e}")
-            return pd.DataFrame(columns=[
-                "Buyer", "Order No", "Produk", "Jumlah", "Start Date", "End Date",
-                "Lead Time (hari)", "Progress (%)", "Status"
-            ])
     return pd.DataFrame(columns=[
-        "Buyer", "Order No", "Produk", "Jumlah", "Start Date", "End Date",
-        "Lead Time (hari)", "Progress (%)", "Status"
+        "Order ID", "Order Date", "Buyer", "Produk", "Qty", "Due Date", 
+        "Prioritas", "Status", "Progress", "Proses Saat Ini", "Keterangan"
     ])
 
 def save_data(df):
     """Menyimpan data ke file JSON"""
     try:
-        # Konversi date ke string untuk JSON
         df_copy = df.copy()
-        df_copy['Start Date'] = df_copy['Start Date'].astype(str)
-        df_copy['End Date'] = df_copy['End Date'].astype(str)
-        
+        df_copy['Order Date'] = df_copy['Order Date'].astype(str)
+        df_copy['Due Date'] = df_copy['Due Date'].astype(str)
         with open(DATABASE_PATH, 'w', encoding='utf-8') as f:
             json.dump(df_copy.to_dict('records'), f, ensure_ascii=False, indent=2)
         return True
@@ -50,292 +41,415 @@ def save_data(df):
         st.error(f"Error saving data: {e}")
         return False
 
-# ===== INISIALISASI DATA =====
+# ===== INISIALISASI =====
 if "data_produksi" not in st.session_state:
     st.session_state["data_produksi"] = load_data()
+if "menu" not in st.session_state:
+    st.session_state["menu"] = "Dashboard"
+if "frozen_start" not in st.session_state:
+    st.session_state["frozen_start"] = datetime.date(2025, 10, 27)
+    st.session_state["frozen_end"] = datetime.date(2025, 11, 17)
 
-if "edit_mode" not in st.session_state:
-    st.session_state["edit_mode"] = False
-    st.session_state["edit_index"] = None
+# ===== SIDEBAR MENU =====
+st.sidebar.title("🏭 PPIC-DSS MENU")
+st.sidebar.markdown("---")
+
+menu_options = {
+    "📊 Dashboard": "Dashboard",
+    "📋 Input Pesanan Baru": "Input",
+    "📦 Daftar Order": "Orders",
+    "⚙️ Update Progress": "Progress",
+    "❄️ Frozen Zone": "Frozen",
+    "📈 Analisis & Laporan": "Analytics"
+}
+
+for label, value in menu_options.items():
+    if st.sidebar.button(label, use_container_width=True):
+        st.session_state["menu"] = value
+
+st.sidebar.markdown("---")
+st.sidebar.info(f"📁 Database: `{os.path.basename(DATABASE_PATH)}`")
 
 # ===== HEADER =====
-st.title("🏭 Sistem Perencanaan Produksi Terintegrasi (PPIC-DSS)")
-st.caption("Versi 3.0 — Input cepat, edit, hapus data, dan database persisten")
+st.title("🏭 Sistem PPIC Decision Support System")
+st.caption("Production Planning & Inventory Control Management System v3.5")
+st.markdown("---")
 
-# Info database
-col_db1, col_db2 = st.columns([3, 1])
-with col_db1:
-    st.info(f"📁 **Lokasi Database:** `{os.path.abspath(DATABASE_PATH)}`")
-with col_db2:
-    if st.button("🔄 Refresh Data"):
-        st.session_state["data_produksi"] = load_data()
-        st.success("Data direfresh!")
-
-st.divider()
-
-# ===== BAGIAN 1: INPUT/EDIT DATA =====
-if st.session_state["edit_mode"]:
-    st.subheader("✏️ Edit Data Produksi")
-    edit_data = st.session_state["data_produksi"].iloc[st.session_state["edit_index"]]
-else:
-    st.subheader("📋 Input Data Produksi Baru")
-    edit_data = None
-
-col1, col2, col3 = st.columns(3)
-with col1:
-    buyer = st.text_input("Nama Buyer*", 
-                          value=edit_data["Buyer"] if edit_data is not None else "",
-                          key="buyer_input")
-    order_no = st.text_input("Nomor Order*", 
-                             value=edit_data["Order No"] if edit_data is not None else "",
-                             key="order_input")
-    produk = st.text_input("Jenis Produk*", 
-                          value=edit_data["Produk"] if edit_data is not None else "",
-                          key="produk_input")
-with col2:
-    jumlah = st.number_input("Jumlah Pesanan*", min_value=1, step=1, 
-                            value=int(edit_data["Jumlah"]) if edit_data is not None else 1,
-                            key="jumlah_input")
-    start_date = st.date_input("Tanggal Mulai*", 
-                              value=edit_data["Start Date"] if edit_data is not None else datetime.date.today(),
-                              key="start_input")
-    end_date = st.date_input("Tanggal Selesai (Rencana)*", 
-                            value=edit_data["End Date"] if edit_data is not None else datetime.date.today(),
-                            key="end_input")
-with col3:
-    lead_time = st.number_input("Lead Time (hari)*", min_value=1, step=1, 
-                               value=int(edit_data["Lead Time (hari)"]) if edit_data is not None else 1,
-                               key="lead_input")
-    progres = st.slider("Progress Produksi (%)", 0, 100, 
-                       value=int(edit_data["Progress (%)"]) if edit_data is not None else 0,
-                       key="progress_input")
-    status = st.selectbox("Status*", ["On Time", "Delayed", "Pending"],
-                         index=["On Time", "Delayed", "Pending"].index(edit_data["Status"]) if edit_data is not None else 0,
-                         key="status_input")
-
-# Tombol aksi
-col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 4])
-with col_btn1:
-    if st.session_state["edit_mode"]:
-        if st.button("💾 Simpan Perubahan", type="primary", use_container_width=True):
-            if buyer and order_no and produk:
-                st.session_state["data_produksi"].loc[st.session_state["edit_index"]] = {
-                    "Buyer": buyer,
-                    "Order No": order_no,
-                    "Produk": produk,
-                    "Jumlah": jumlah,
-                    "Start Date": start_date,
-                    "End Date": end_date,
-                    "Lead Time (hari)": lead_time,
-                    "Progress (%)": progres,
-                    "Status": status
-                }
-                if save_data(st.session_state["data_produksi"]):
-                    st.success("✅ Data berhasil diupdate!")
-                    st.session_state["edit_mode"] = False
-                    st.session_state["edit_index"] = None
-                    st.rerun()
-            else:
-                st.warning("⚠️ Pastikan semua field wajib (*) terisi!")
+# ===== MENU: DASHBOARD =====
+if st.session_state["menu"] == "Dashboard":
+    st.header("📊 Dashboard Overview")
+    
+    df = st.session_state["data_produksi"]
+    
+    if not df.empty:
+        # Metrics
+        col1, col2, col3, col4, col5 = st.columns(5)
+        
+        total_orders = len(df)
+        accepted = len(df[df["Status"] == "Accepted"])
+        pending = len(df[df["Status"] == "Pending"])
+        rejected = len(df[df["Status"] == "Rejected"])
+        avg_progress = df["Progress"].str.rstrip('%').astype('float').mean()
+        
+        col1.metric("📦 Total Orders", total_orders)
+        col2.metric("✅ Accepted", accepted, delta=f"{(accepted/total_orders*100):.0f}%")
+        col3.metric("⏳ Pending", pending, delta=f"{(pending/total_orders*100):.0f}%")
+        col4.metric("❌ Rejected", rejected, delta=f"-{(rejected/total_orders*100):.0f}%")
+        col5.metric("📈 Avg Progress", f"{avg_progress:.1f}%")
+        
+        st.markdown("---")
+        
+        # Charts
+        col_chart1, col_chart2 = st.columns(2)
+        
+        with col_chart1:
+            st.subheader("Status Distribution")
+            status_count = df["Status"].value_counts()
+            st.bar_chart(status_count)
+        
+        with col_chart2:
+            st.subheader("Top 5 Products")
+            product_count = df["Produk"].value_counts().head(5)
+            st.bar_chart(product_count)
+        
+        # Recent Orders
+        st.subheader("🕒 Recent Orders (Last 5)")
+        recent_df = df.sort_values("Order Date", ascending=False).head(5)
+        st.dataframe(recent_df[["Order ID", "Order Date", "Buyer", "Produk", "Qty", "Status", "Progress"]], 
+                     use_container_width=True, hide_index=True)
     else:
-        if st.button("➕ Tambah Data", type="primary", use_container_width=True):
-            new_data = pd.DataFrame({
-                "Buyer": [buyer],
-                "Order No": [order_no],
-                "Produk": [produk],
-                "Jumlah": [jumlah],
-                "Start Date": [start_date],
-                "End Date": [end_date],
-                "Lead Time (hari)": [lead_time],
-                "Progress (%)": [progres],
-                "Status": [status]
-            })
+        st.info("📝 Belum ada data. Silakan input pesanan baru.")
 
-            if buyer and order_no and produk:
-                st.session_state["data_produksi"] = pd.concat(
-                    [st.session_state["data_produksi"], new_data], ignore_index=True
-                )
-                if save_data(st.session_state["data_produksi"]):
-                    st.success("✅ Data berhasil ditambahkan dan disimpan!")
-                    st.rerun()
-            else:
-                st.warning("⚠️ Pastikan semua field wajib (*) terisi!")
-
-with col_btn2:
-    if st.session_state["edit_mode"]:
-        if st.button("❌ Batal Edit", use_container_width=True):
-            st.session_state["edit_mode"] = False
-            st.session_state["edit_index"] = None
-            st.rerun()
-
-st.divider()
-
-# ===== BAGIAN 2: TABEL DATA DENGAN AKSI =====
-st.subheader("📊 Data Produksi Terkini")
-df = st.session_state["data_produksi"]
-
-if not df.empty:
-    # Filter dan pencarian
-    col_filter1, col_filter2, col_filter3 = st.columns(3)
-    with col_filter1:
-        search_buyer = st.text_input("🔍 Cari Buyer", "")
-    with col_filter2:
-        filter_status = st.multiselect("Filter Status", 
-                                       ["On Time", "Delayed", "Pending"],
-                                       default=["On Time", "Delayed", "Pending"])
-    with col_filter3:
-        sort_by = st.selectbox("Urutkan berdasarkan", 
-                              ["Order No", "Start Date", "End Date", "Progress (%)", "Status"])
+# ===== MENU: INPUT PESANAN BARU =====
+elif st.session_state["menu"] == "Input":
+    st.header("📋 INPUT PESANAN BARU")
     
-    # Terapkan filter
-    df_filtered = df.copy()
-    if search_buyer:
-        df_filtered = df_filtered[df_filtered["Buyer"].str.contains(search_buyer, case=False, na=False)]
-    if filter_status:
-        df_filtered = df_filtered[df_filtered["Status"].isin(filter_status)]
-    df_filtered = df_filtered.sort_values(by=sort_by)
-    
-    # Tampilkan tabel dengan aksi di setiap baris
-    st.markdown("#### Daftar Order")
-    
-    # Header tabel
-    col_headers = st.columns([0.5, 1.5, 1.5, 1.5, 1, 1.2, 1.2, 1, 1, 1, 1.2])
-    headers = ["No", "Buyer", "Order No", "Produk", "Jumlah", "Start Date", "End Date", 
-               "Lead Time", "Progress", "Status", "Aksi"]
-    for col, header in zip(col_headers, headers):
-        col.markdown(f"**{header}**")
-    
-    st.markdown("---")
-    
-    # Data rows dengan tombol aksi
-    for idx, row in df_filtered.iterrows():
-        cols = st.columns([0.5, 1.5, 1.5, 1.5, 1, 1.2, 1.2, 1, 1, 1, 1.2])
+    with st.container():
+        st.markdown("""
+        <div style='background-color: #1E3A8A; padding: 10px; border-radius: 5px; margin-bottom: 20px;'>
+            <h3 style='color: white; text-align: center; margin: 0;'>INPUT PESANAN BARU</h3>
+        </div>
+        """, unsafe_allow_html=True)
         
-        cols[0].write(idx)
-        cols[1].write(row["Buyer"])
-        cols[2].write(row["Order No"])
-        cols[3].write(row["Produk"])
-        cols[4].write(row["Jumlah"])
-        cols[5].write(str(row["Start Date"]))
-        cols[6].write(str(row["End Date"]))
-        cols[7].write(f"{row['Lead Time (hari)']} hari")
-        cols[8].write(f"{row['Progress (%)']}%")
+        col1, col2 = st.columns([1, 2])
         
-        # Status dengan warna
-        status_color = {"On Time": "🟢", "Delayed": "🔴", "Pending": "🟡"}
-        cols[9].write(f"{status_color.get(row['Status'], '')} {row['Status']}")
+        with col1:
+            st.markdown("**ORDER DATE**")
+            st.markdown("**BUYER NAME**")
+            st.markdown("**PRODUK**")
+            st.markdown("**JUMLAH**")
+            st.markdown("**DUE DATE**")
+            st.markdown("**PRIORITAS**")
         
-        # Tombol aksi di kolom paling kanan
-        with cols[10]:
-            col_edit, col_delete = st.columns(2)
-            with col_edit:
-                if st.button("✏️", key=f"edit_{idx}", help="Edit data ini"):
-                    st.session_state["edit_mode"] = True
-                    st.session_state["edit_index"] = idx
-                    st.rerun()
-            with col_delete:
-                if st.button("🗑️", key=f"delete_{idx}", help="Hapus data ini", type="secondary"):
-                    st.session_state["data_produksi"].drop(idx, inplace=True)
-                    st.session_state["data_produksi"].reset_index(drop=True, inplace=True)
+        with col2:
+            order_date = st.date_input("", datetime.date.today(), label_visibility="collapsed", key="input_order_date")
+            
+            # List buyer (bisa disesuaikan)
+            buyers_list = ["Belhome", "Indomsk", "SDM", "WMG", "Remar", "ITM", "San Marco", "Olympic", "IKEA"]
+            buyer = st.selectbox("", buyers_list, label_visibility="collapsed", key="input_buyer")
+            
+            produk = st.text_input("", placeholder="Masukkan nama produk", label_visibility="collapsed", key="input_produk")
+            qty = st.number_input("", min_value=1, value=1, label_visibility="collapsed", key="input_qty")
+            due_date = st.date_input("", datetime.date.today() + datetime.timedelta(days=30), label_visibility="collapsed", key="input_due")
+            prioritas = st.selectbox("", ["High", "Medium", "Low"], label_visibility="collapsed", key="input_priority")
+        
+        st.markdown("")
+        col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
+        
+        with col_btn1:
+            if st.button("🔍 CHECK CAPACITY", use_container_width=True, type="secondary"):
+                st.info("✅ Kapasitas tersedia untuk produksi")
+        
+        with col_btn2:
+            if st.button("📤 SUBMIT ORDER", use_container_width=True, type="primary"):
+                if produk and buyer:
+                    # Generate Order ID
+                    existing_ids = st.session_state["data_produksi"]["Order ID"].tolist() if not st.session_state["data_produksi"].empty else []
+                    new_id_num = max([int(oid.split("-")[1]) for oid in existing_ids if "-" in oid], default=2400) + 1
+                    new_order_id = f"ORD-{new_id_num}"
+                    
+                    new_data = pd.DataFrame({
+                        "Order ID": [new_order_id],
+                        "Order Date": [order_date],
+                        "Buyer": [buyer],
+                        "Produk": [produk],
+                        "Qty": [qty],
+                        "Due Date": [due_date],
+                        "Prioritas": [prioritas],
+                        "Status": ["Pending"],
+                        "Progress": ["0%"],
+                        "Proses Saat Ini": ["Drafting"],
+                        "Keterangan": [""]
+                    })
+                    
+                    st.session_state["data_produksi"] = pd.concat(
+                        [st.session_state["data_produksi"], new_data], ignore_index=True
+                    )
+                    
                     if save_data(st.session_state["data_produksi"]):
-                        st.success(f"✅ Data order {row['Order No']} berhasil dihapus!")
+                        st.success(f"✅ Order {new_order_id} berhasil ditambahkan!")
+                        st.balloons()
+                else:
+                    st.warning("⚠️ Harap lengkapi data produk dan buyer!")
+
+# ===== MENU: DAFTAR ORDER =====
+elif st.session_state["menu"] == "Orders":
+    st.header("📦 DAFTAR ORDER")
+    
+    df = st.session_state["data_produksi"]
+    
+    if not df.empty:
+        # Filter
+        col_f1, col_f2, col_f3 = st.columns(3)
+        with col_f1:
+            filter_buyer = st.multiselect("Filter Buyer", df["Buyer"].unique())
+        with col_f2:
+            filter_status = st.multiselect("Filter Status", ["Accepted", "Pending", "Rejected"], default=["Accepted", "Pending", "Rejected"])
+        with col_f3:
+            search_order = st.text_input("🔍 Cari Order ID / Produk")
+        
+        # Apply filters
+        df_filtered = df.copy()
+        if filter_buyer:
+            df_filtered = df_filtered[df_filtered["Buyer"].isin(filter_buyer)]
+        if filter_status:
+            df_filtered = df_filtered[df_filtered["Status"].isin(filter_status)]
+        if search_order:
+            df_filtered = df_filtered[
+                df_filtered["Order ID"].str.contains(search_order, case=False, na=False) | 
+                df_filtered["Produk"].str.contains(search_order, case=False, na=False)
+            ]
+        
+        st.markdown("---")
+        
+        # Table with actions
+        for idx, row in df_filtered.iterrows():
+            with st.container():
+                cols = st.columns([1, 1.2, 1, 1.5, 0.7, 1, 1, 1.2, 1.2, 0.8])
+                
+                cols[0].write(f"**{row['Order ID']}**")
+                cols[1].write(row['Order Date'])
+                cols[2].write(row['Buyer'])
+                cols[3].write(row['Produk'])
+                cols[4].write(row['Qty'])
+                cols[5].write(row['Due Date'])
+                
+                # Status dengan warna
+                status_colors = {
+                    "Accepted": "🟢",
+                    "Pending": "🟡",
+                    "Rejected": "🔴"
+                }
+                cols[6].write(f"{status_colors.get(row['Status'], '')} {row['Status']}")
+                
+                cols[7].write(row['Progress'])
+                cols[8].write(row['Proses Saat Ini'])
+                
+                # Action buttons
+                with cols[9]:
+                    col_edit, col_del = st.columns(2)
+                    with col_edit:
+                        if st.button("✏️", key=f"edit_order_{idx}"):
+                            st.session_state["edit_order_idx"] = idx
+                            st.session_state["menu"] = "Progress"
+                            st.rerun()
+                    with col_del:
+                        if st.button("🗑️", key=f"del_order_{idx}"):
+                            st.session_state["data_produksi"].drop(idx, inplace=True)
+                            st.session_state["data_produksi"].reset_index(drop=True, inplace=True)
+                            save_data(st.session_state["data_produksi"])
+                            st.rerun()
+                
+                st.markdown("---")
+    else:
+        st.info("📝 Belum ada order yang diinput.")
+
+# ===== MENU: UPDATE PROGRESS =====
+elif st.session_state["menu"] == "Progress":
+    st.header("⚙️ UPDATE PROGRESS PRODUKSI")
+    
+    df = st.session_state["data_produksi"]
+    
+    if not df.empty:
+        with st.container():
+            st.markdown("""
+            <div style='background-color: #1E3A8A; padding: 10px; border-radius: 5px; margin-bottom: 20px;'>
+                <h3 style='color: white; text-align: center; margin: 0;'>UPDATE PROGRESS PRODUKSI</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Pilih order
+            order_ids = df["Order ID"].tolist()
+            selected_order = st.selectbox("Pilih Order ID", order_ids, key="progress_order_select")
+            
+            if selected_order:
+                order_data = df[df["Order ID"] == selected_order].iloc[0]
+                order_idx = df[df["Order ID"] == selected_order].index[0]
+                
+                col1, col2 = st.columns([1, 2])
+                
+                with col1:
+                    st.markdown("**ORDER ID**")
+                    st.markdown("**PRODUCT**")
+                    st.markdown("**PROSES**")
+                    st.markdown("**MULAI**")
+                    st.markdown("**SELESAI**")
+                    st.markdown("**PERSENTASE**")
+                    st.markdown("**CATATAN**")
+                
+                with col2:
+                    st.text_input("", value=order_data["Order ID"], disabled=True, label_visibility="collapsed", key="prog_order_id")
+                    st.text_input("", value=order_data["Produk"], disabled=True, label_visibility="collapsed", key="prog_product")
+                    
+                    proses_list = ["Drafting", "Cutting", "Assembly", "Finishing", "Spray", "Packing", "Quality Check"]
+                    current_proses = st.selectbox("", proses_list, 
+                                                  index=proses_list.index(order_data["Proses Saat Ini"]) if order_data["Proses Saat Ini"] in proses_list else 0,
+                                                  label_visibility="collapsed", key="prog_proses")
+                    
+                    start_date = st.date_input("", value=datetime.date.today(), label_visibility="collapsed", key="prog_start")
+                    end_date = st.date_input("", value=datetime.date.today(), label_visibility="collapsed", key="prog_end")
+                    
+                    progress = st.slider("", 0, 100, int(order_data["Progress"].rstrip('%')), label_visibility="collapsed", key="prog_percentage")
+                    st.write(f"**{progress}%**")
+                    
+                    notes = st.text_area("", value=order_data["Keterangan"], placeholder="Masukkan catatan...", 
+                                        label_visibility="collapsed", key="prog_notes", height=80)
+                
+                st.markdown("")
+                col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
+                
+                with col_btn1:
+                    if st.button("🔄 CLEAR", use_container_width=True):
                         st.rerun()
+                
+                with col_btn2:
+                    if st.button("💾 SAVE", use_container_width=True, type="primary"):
+                        st.session_state["data_produksi"].at[order_idx, "Progress"] = f"{progress}%"
+                        st.session_state["data_produksi"].at[order_idx, "Proses Saat Ini"] = current_proses
+                        st.session_state["data_produksi"].at[order_idx, "Keterangan"] = notes
+                        
+                        # Auto update status based on progress
+                        if progress == 100:
+                            st.session_state["data_produksi"].at[order_idx, "Status"] = "Accepted"
+                        elif progress > 0:
+                            st.session_state["data_produksi"].at[order_idx, "Status"] = "Accepted"
+                        
+                        if save_data(st.session_state["data_produksi"]):
+                            st.success(f"✅ Progress order {selected_order} berhasil diupdate!")
+    else:
+        st.info("📝 Belum ada order untuk diupdate.")
+
+# ===== MENU: FROZEN ZONE =====
+elif st.session_state["menu"] == "Frozen":
+    st.header("❄️ FROZEN ZONE")
+    
+    st.markdown("""
+    <div style='background-color: #1E3A8A; padding: 10px; border-radius: 5px; margin-bottom: 20px;'>
+        <h3 style='color: white; text-align: center; margin: 0;'>❄️ FROZEN ZONE</h3>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("### START")
+        frozen_start = st.date_input("", value=st.session_state["frozen_start"], label_visibility="collapsed", key="frozen_start_input")
+    with col2:
+        st.markdown("### UNTIL")
+        frozen_end = st.date_input("", value=st.session_state["frozen_end"], label_visibility="collapsed", key="frozen_end_input")
+    
+    if st.button("💾 Set Frozen Period", type="primary"):
+        st.session_state["frozen_start"] = frozen_start
+        st.session_state["frozen_end"] = frozen_end
+        st.success("✅ Frozen period berhasil diset!")
     
     st.markdown("---")
+    st.subheader("📦 Order in Frozen Zone")
     
-    # Hapus semua data (di bawah tabel)
-    with st.expander("⚠️ Zona Bahaya - Hapus Semua Data"):
-        st.warning("**PERHATIAN:** Tindakan ini akan menghapus SEMUA data produksi!")
-        col_danger1, col_danger2 = st.columns([3, 1])
-        with col_danger1:
-            confirm_delete = st.checkbox("Saya yakin ingin menghapus SEMUA data")
-        with col_danger2:
-            if st.button("🗑️ Hapus Semua", type="secondary", disabled=not confirm_delete, use_container_width=True):
-                st.session_state["data_produksi"] = pd.DataFrame(columns=[
-                    "Buyer", "Order No", "Produk", "Jumlah", "Start Date", "End Date",
-                    "Lead Time (hari)", "Progress (%)", "Status"
-                ])
-                if save_data(st.session_state["data_produksi"]):
-                    st.success("✅ Semua data berhasil dihapus!")
-                    st.rerun()
-
-else:
-    st.info("📝 Belum ada data yang dimasukkan. Mulai dengan menambahkan data produksi baru di atas.")
-
-st.divider()
-
-# ===== BAGIAN 3: ANALISIS RINGKAS =====
-if not df.empty:
-    st.subheader("📈 Dashboard Analisis Produksi")
-    
-    # Metrics
-    total_order = len(df)
-    avg_progress = df["Progress (%)"].mean()
-    delayed = len(df[df["Status"] == "Delayed"])
-    on_time = len(df[df["Status"] == "On Time"])
-    pending = len(df[df["Status"] == "Pending"])
-    total_qty = df["Jumlah"].sum()
-
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
-    col1.metric("📦 Total Order", total_order)
-    col2.metric("📊 Rata-rata Progress", f"{avg_progress:.1f}%")
-    col3.metric("✅ On Time", on_time)
-    col4.metric("⚠️ Delayed", delayed)
-    col5.metric("⏳ Pending", pending)
-    col6.metric("🔢 Total Qty", f"{total_qty:,}")
-
-    # Charts
-    col_chart1, col_chart2 = st.columns(2)
-    with col_chart1:
-        st.markdown("**Progress per Produk**")
-        st.bar_chart(df.set_index("Produk")["Progress (%)"])
-    
-    with col_chart2:
-        st.markdown("**Distribusi Status**")
-        status_count = df["Status"].value_counts()
-        st.bar_chart(status_count)
-
-st.divider()
-
-# ===== BAGIAN 4: EXPORT DATA =====
-if not df.empty:
-    st.subheader("💾 Export Data")
-    col_exp1, col_exp2, col_exp3 = st.columns(3)
-    
-    with col_exp1:
-        csv_data = df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="📄 Download CSV",
-            data=csv_data,
-            file_name=f"ppic_data_{datetime.date.today()}.csv",
-            mime="text/csv",
-            use_container_width=True
-        )
-    
-    with col_exp2:
-        excel_buffer = pd.ExcelWriter('temp.xlsx', engine='xlsxwriter')
-        df.to_excel(excel_buffer, index=False, sheet_name='PPIC Data')
-        excel_buffer.close()
+    df = st.session_state["data_produksi"]
+    if not df.empty:
+        # Filter orders dalam frozen zone
+        df_frozen = df[
+            (df["Due Date"] >= frozen_start) & 
+            (df["Due Date"] <= frozen_end)
+        ]
         
-        st.download_button(
-            label="📊 Download Excel",
-            data=open('temp.xlsx', 'rb').read(),
-            file_name=f"ppic_data_{datetime.date.today()}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
+        if not df_frozen.empty:
+            st.dataframe(df_frozen[["Order ID", "Produk", "Qty", "Due Date", "Status"]], 
+                        use_container_width=True, hide_index=True)
+            st.warning(f"⚠️ {len(df_frozen)} order berada dalam frozen zone!")
+        else:
+            st.info("✅ Tidak ada order dalam frozen zone.")
+    else:
+        st.info("📝 Belum ada data order.")
+
+# ===== MENU: ANALYTICS =====
+elif st.session_state["menu"] == "Analytics":
+    st.header("📈 ANALISIS & LAPORAN")
     
-    with col_exp3:
-        json_data = df.to_json(orient='records', indent=2)
-        st.download_button(
-            label="📋 Download JSON",
-            data=json_data,
-            file_name=f"ppic_data_{datetime.date.today()}.json",
-            mime="application/json",
-            use_container_width=True
-        )
+    df = st.session_state["data_produksi"]
+    
+    if not df.empty:
+        tab1, tab2, tab3 = st.tabs(["📊 Overview", "👥 By Buyer", "📦 By Product"])
+        
+        with tab1:
+            st.subheader("Performance Overview")
+            col1, col2, col3 = st.columns(3)
+            
+            total_qty = df["Qty"].sum()
+            on_time_orders = len(df[df["Due Date"] >= datetime.date.today()])
+            completion_rate = (df["Progress"].str.rstrip('%').astype('float').mean())
+            
+            col1.metric("Total Quantity", f"{total_qty:,} pcs")
+            col2.metric("On-Time Orders", on_time_orders)
+            col3.metric("Avg Completion", f"{completion_rate:.1f}%")
+        
+        with tab2:
+            st.subheader("Analysis by Buyer")
+            buyer_stats = df.groupby("Buyer").agg({
+                "Order ID": "count",
+                "Qty": "sum"
+            }).rename(columns={"Order ID": "Total Orders", "Qty": "Total Qty"})
+            
+            st.dataframe(buyer_stats, use_container_width=True)
+            st.bar_chart(buyer_stats["Total Orders"])
+        
+        with tab3:
+            st.subheader("Analysis by Product")
+            product_stats = df.groupby("Produk").agg({
+                "Order ID": "count",
+                "Qty": "sum"
+            }).rename(columns={"Order ID": "Total Orders", "Qty": "Total Qty"})
+            
+            st.dataframe(product_stats, use_container_width=True)
+            st.bar_chart(product_stats["Total Qty"])
+        
+        # Export
+        st.markdown("---")
+        st.subheader("💾 Export Laporan")
+        col_exp1, col_exp2 = st.columns(2)
+        
+        with col_exp1:
+            csv_data = df.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="📄 Download CSV",
+                data=csv_data,
+                file_name=f"ppic_report_{datetime.date.today()}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+        
+        with col_exp2:
+            json_data = df.to_json(orient='records', indent=2)
+            st.download_button(
+                label="📋 Download JSON",
+                data=json_data,
+                file_name=f"ppic_report_{datetime.date.today()}.json",
+                mime="application/json",
+                use_container_width=True
+            )
+    else:
+        st.info("📝 Belum ada data untuk dianalisis.")
 
 # Footer
-st.divider()
-st.caption("© 2025 Sistem PPIC-DSS | Dibangun dengan Streamlit | v3.0")
-st.caption(f"💾 Data disimpan otomatis ke: {DATABASE_PATH}")
+st.markdown("---")
+st.caption(f"© 2025 PPIC-DSS System | v3.5 | 💾 Data: {DATABASE_PATH}")
