@@ -409,8 +409,8 @@ elif st.session_state["menu"] == "Progress":
                 .progress-label-row {
                     display: flex;
                     align-items: center;
-                    height: 38px;
-                    margin-bottom: 8px;
+                    height: 45px;
+                    margin-bottom: 10px;
                     font-weight: bold;
                 }
                 .progress-slider-label {
