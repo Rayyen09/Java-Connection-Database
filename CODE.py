@@ -178,7 +178,7 @@ elif st.session_state["menu"] == "Input":
             display: flex;
             align-items: center;
             height: 38px;
-            margin-bottom: 15px;
+            margin-bottom: 20px;
             font-weight: bold;
         }
         </style>
