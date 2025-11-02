@@ -359,6 +359,111 @@ elif st.session_state["menu"] == "Orders":
             st.markdown("<div style='margin: 8px 0; border-bottom: 1px solid #374151;'></div>", unsafe_allow_html=True)
     else:
         st.info("📝 Belum ada order yang diinput.")
+# ===== MENU: UPDATE PROGRESS =====
+elif st.session_state["menu"] == "Progress":
+    st.header("⚙️ UPDATE PROGRESS PRODUKSI")
+    
+    df = st.session_state["data_produksi"]
+    
+    if not df.empty:
+        with st.container():
+            st.markdown("""
+            <div style='background-color: #1E3A8A; padding: 15px; border-radius: 8px; margin-bottom: 25px;'>
+                <h3 style='color: white; text-align: center; margin: 0;'>FORM UPDATE PROGRESS</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Pilih order
+            order_ids = df["Order ID"].tolist()
+            
+            # Cek jika ada order yang di-edit dari menu Orders
+            default_idx = 0
+            if "edit_order_idx" in st.session_state:
+                edit_order_id = df.iloc[st.session_state["edit_order_idx"]]["Order ID"]
+                default_idx = order_ids.index(edit_order_id)
+                del st.session_state["edit_order_idx"]
+            
+            selected_order = st.selectbox("Pilih Order ID", order_ids, index=default_idx, key="progress_order_select")
+            
+            if selected_order:
+                order_data = df[df["Order ID"] == selected_order].iloc[0]
+                order_idx = df[df["Order ID"] == selected_order].index[0]
+                
+                # Custom CSS untuk alignment yang sempurna
+                st.markdown("""
+                <style>
+                .progress-label-row {
+                    display: flex;
+                    align-items: center;
+                    height: 38px;
+                    margin-bottom: 8px;
+                    font-weight: bold;
+                }
+                .progress-slider-label {
+                    display: flex;
+                    align-items: center;
+                    height: 70px;
+                    margin-bottom: 8px;
+                    font-weight: bold;
+                }
+                .progress-textarea-label {
+                    display: flex;
+                    align-items: flex-start;
+                    padding-top: 8px;
+                    margin-bottom: 8px;
+                    font-weight: bold;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+                
+                col1, col2 = st.columns([1, 3])
+                
+                with col1:
+                    st.markdown("<div class='progress-label-row'>Order ID</div>", unsafe_allow_html=True)
+                    st.markdown("<div class='progress-label-row'>Product</div>", unsafe_allow_html=True)
+                    st.markdown("<div class='progress-label-row'>Proses Saat Ini</div>", unsafe_allow_html=True)
+                    st.markdown("<div class='progress-label-row'>Status Order</div>", unsafe_allow_html=True)
+                    st.markdown("<div class='progress-slider-label'>Persentase Progress</div>", unsafe_allow_html=True)
+                    st.markdown("<div class='progress-textarea-label'>Catatan</div>", unsafe_allow_html=True)
+                
+                with col2:
+                    st.text_input("", value=order_data["Order ID"], disabled=True, label_visibility="collapsed", key="prog_order_id")
+                    st.text_input("", value=order_data["Produk"], disabled=True, label_visibility="collapsed", key="prog_product")
+                    
+                    proses_list = get_tracking_stages()
+                    current_proses = st.selectbox("", proses_list, 
+                                                  index=proses_list.index(order_data["Proses Saat Ini"]) if order_data["Proses Saat Ini"] in proses_list else 0,
+                                                  label_visibility="collapsed", key="prog_proses")
+                    
+                    status_order = st.selectbox("", ["Pending", "Accepted", "Rejected"], 
+                                               index=["Pending", "Accepted", "Rejected"].index(order_data["Status"]),
+                                               label_visibility="collapsed", key="prog_status")
+                    
+                    progress = st.slider("", 0, 100, int(order_data["Progress"].rstrip('%')), label_visibility="collapsed", key="prog_percentage")
+                    st.markdown(f"<h2 style='color: #1E3A8A; margin-top: -10px;'>{progress}%</h2>", unsafe_allow_html=True)
+                    
+                    notes = st.text_area("", value=order_data["Keterangan"], placeholder="Masukkan catatan...", 
+                                        label_visibility="collapsed", key="prog_notes", height=100)
+                
+                st.markdown("")
+                col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
+                
+                with col_btn1:
+                    if st.button("🔄 RESET", use_container_width=True):
+                        st.rerun()
+                
+                with col_btn2:
+                    if st.button("💾 SAVE PROGRESS", use_container_width=True, type="primary"):
+                        st.session_state["data_produksi"].at[order_idx, "Progress"] = f"{progress}%"
+                        st.session_state["data_produksi"].at[order_idx, "Proses Saat Ini"] = current_proses
+                        st.session_state["data_produksi"].at[order_idx, "Keterangan"] = notes
+                        st.session_state["data_produksi"].at[order_idx, "Status"] = status_order
+                        
+                        if save_data(st.session_state["data_produksi"]):
+                            st.success(f"✅ Progress order {selected_order} berhasil diupdate!")
+                            st.balloons()
+    else:
+        st.info("📝 Belum ada order untuk diupdate.")
 
 # ===== MENU: TRACKING PRODUKSI =====
 elif st.session_state["menu"] == "Tracking":
