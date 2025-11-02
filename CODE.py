@@ -300,6 +300,10 @@ elif st.session_state["menu"] == "Orders":
         header_cols[9].markdown("**Action**")
         st.markdown("</div>", unsafe_allow_html=True)
         
+        # Inisialisasi session state untuk konfirmasi delete
+        if "delete_confirm" not in st.session_state:
+            st.session_state["delete_confirm"] = {}
+        
         # Table with actions
         for idx, row in df_filtered.iterrows():
             cols = st.columns([1, 1, 0.8, 1.5, 0.5, 1, 0.8, 1, 1, 0.8])
@@ -328,12 +332,41 @@ elif st.session_state["menu"] == "Orders":
                         st.session_state["edit_order_idx"] = idx
                         st.session_state["menu"] = "Progress"
                         st.rerun()
+                
                 with action_col2:
-                    if st.button("🗑️", key=f"del_{idx}", help="Delete Order", use_container_width=True):
-                        st.session_state["data_produksi"].drop(idx, inplace=True)
-                        st.session_state["data_produksi"].reset_index(drop=True, inplace=True)
-                        save_data(st.session_state["data_produksi"])
-                        st.rerun()
+                    # Cek apakah order ini sedang dalam mode konfirmasi delete
+                    if st.session_state["delete_confirm"].get(idx, False):
+                        # Mode konfirmasi aktif - tampilkan tombol konfirmasi
+                        if st.button("✅", key=f"confirm_del_{idx}", help="Confirm Delete", use_container_width=True):
+                            # Hapus order
+                            st.session_state["data_produksi"].drop(idx, inplace=True)
+                            st.session_state["data_produksi"].reset_index(drop=True, inplace=True)
+                            save_data(st.session_state["data_produksi"])
+                            # Reset konfirmasi
+                            st.session_state["delete_confirm"][idx] = False
+                            st.success(f"✅ Order {row['Order ID']} berhasil dihapus!")
+                            st.rerun()
+                    else:
+                        # Mode normal - tampilkan tombol delete
+                        if st.button("🗑️", key=f"del_{idx}", help="Delete Order", use_container_width=True):
+                            # Aktifkan mode konfirmasi
+                            st.session_state["delete_confirm"][idx] = True
+                            st.rerun()
+            
+            # Tampilkan warning jika dalam mode konfirmasi
+            if st.session_state["delete_confirm"].get(idx, False):
+                st.markdown(f"""
+                <div style='background-color: #991B1B; padding: 10px; border-radius: 5px; margin: 5px 0;'>
+                    <span style='color: white; font-weight: bold;'>⚠️ Konfirmasi Hapus Order {row['Order ID']}?</span>
+                    <br>
+                    <span style='color: #FEE2E2; font-size: 0.9em;'>Klik tombol ✅ untuk konfirmasi atau refresh halaman untuk batal</span>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Tombol batal
+                if st.button(f"❌ Batal Hapus", key=f"cancel_del_{idx}", type="secondary"):
+                    st.session_state["delete_confirm"][idx] = False
+                    st.rerun()
             
             st.markdown("<div style='margin: 8px 0; border-bottom: 1px solid #374151;'></div>", unsafe_allow_html=True)
     else:
