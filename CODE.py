@@ -166,7 +166,7 @@ elif st.session_state["menu"] == "Input":
     
     with st.container():
         st.markdown("""
-        <div style='background-color: #1E3A8A; padding: 15px; border-radius: 8px; margin-bottom: 25px;'>
+        <div style='background-color: #1E3A8A; padding: 15px; border-radius: 8px; margin-bottom: 30px;'>
             <h3 style='color: white; text-align: center; margin: 0;'>FORM INPUT PESANAN BARU</h3>
         </div>
         """, unsafe_allow_html=True)
