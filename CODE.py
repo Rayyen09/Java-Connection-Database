@@ -334,7 +334,7 @@ elif st.session_state["menu"] == "Orders":
                         st.session_state["data_produksi"].reset_index(drop=True, inplace=True)
                         save_data(st.session_state["data_produksi"])
                         st.rerun()
-                       st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
+                st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
     else:
         st.info("📝 Belum ada order yang diinput.")
 # ===== MENU: UPDATE PROGRESS =====
