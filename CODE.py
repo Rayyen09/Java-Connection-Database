@@ -413,44 +413,67 @@ elif st.session_state["menu"] == "Progress":
                     
                     proses_list = get_tracking_stages()
                     current_proses_idx = proses_list.index(order_data["Proses Saat Ini"]) if order_data["Proses Saat Ini"] in proses_list else 0
+                    
+                    # Selectbox dengan key unik untuk trigger update
                     current_proses = st.selectbox("", proses_list, 
                                                   index=current_proses_idx,
                                                   label_visibility="collapsed",
-                                                  key=f"proses_select_{selected_order}")
+                                                  key=f"proses_{selected_order}")
                     
                     status_list = ["Pending", "Accepted", "Rejected"]
                     status_idx = status_list.index(order_data["Status"]) if order_data["Status"] in status_list else 0
                     status_order = st.selectbox("", status_list, 
                                                index=status_idx,
-                                               label_visibility="collapsed")
+                                               label_visibility="collapsed",
+                                               key=f"status_{selected_order}")
                     
                     # Auto update progress berdasarkan proses
-                    auto_progress = get_progress_from_stage(current_proses)
+                    try:
+                        auto_progress = get_progress_from_stage(current_proses)
+                    except Exception as e:
+                        st.error(f"Error calculating progress: {e}")
+                        auto_progress = 0
                     
                     # Info box untuk notifikasi auto progress
-                    if auto_progress != int(order_data["Progress"].rstrip('%')):
+                    current_saved_progress = int(order_data["Progress"].rstrip('%')) if order_data["Progress"] else 0
+                    if auto_progress != current_saved_progress:
                         st.info(f"💡 Progress otomatis: {auto_progress}% untuk tahap '{current_proses}'")
                     
                     # Checkbox untuk manual override
                     use_manual_progress = st.checkbox("Override progress manual", value=False, 
+                                                     key=f"manual_{selected_order}",
                                                      help="Centang jika ingin mengatur progress secara manual")
                     
                     if use_manual_progress:
-                        current_progress = int(order_data["Progress"].rstrip('%'))
-                        progress = st.slider("", 0, 100, current_progress, label_visibility="collapsed",
+                        progress = st.slider("", 0, 100, current_saved_progress, 
+                                           label_visibility="collapsed",
+                                           key=f"slider_{selected_order}",
                                            help="Slide untuk mengatur progress manual")
                     else:
                         # Gunakan auto progress
                         progress = auto_progress
                         st.slider("", 0, 100, progress, label_visibility="collapsed", 
-                                disabled=True, help="Progress otomatis berdasarkan tahapan proses")
+                                disabled=True, 
+                                key=f"slider_auto_{selected_order}",
+                                help="Progress otomatis berdasarkan tahapan proses")
                     
                     # Display progress dengan warna
-                    progress_color = "#10B981" if progress == 100 else "#3B82F6" if progress >= 50 else "#F59E0B" if progress >= 25 else "#EF4444"
+                    if progress == 100:
+                        progress_color = "#10B981"  # Green
+                    elif progress >= 50:
+                        progress_color = "#3B82F6"  # Blue
+                    elif progress >= 25:
+                        progress_color = "#F59E0B"  # Orange
+                    else:
+                        progress_color = "#EF4444"  # Red
+                        
                     st.markdown(f"<h2 style='color: {progress_color}; margin-top: -10px;'>{progress}%</h2>", unsafe_allow_html=True)
                     
-                    notes = st.text_area("", value=order_data["Keterangan"], placeholder="Masukkan catatan...", 
-                                        label_visibility="collapsed", height=100)
+                    notes = st.text_area("", value=str(order_data["Keterangan"]) if order_data["Keterangan"] else "", 
+                                        placeholder="Masukkan catatan...", 
+                                        label_visibility="collapsed", 
+                                        key=f"notes_{selected_order}",
+                                        height=100)
                 
                 st.markdown("")
                 
@@ -490,7 +513,7 @@ elif st.session_state["menu"] == "Progress":
                             st.balloons()
     else:
         st.info("📝 Belum ada order untuk diupdate.")
-
+        
 # ===== MENU: TRACKING PRODUKSI =====
 elif st.session_state["menu"] == "Tracking":
     st.header("🔍 TRACKING PRODUKSI")
