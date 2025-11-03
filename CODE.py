@@ -559,7 +559,7 @@ elif st.session_state["menu"] == "Progress":
     else:
         st.info("📝 Belum ada order untuk diupdate.")
                         
-# ===== # ===== MENU: TRACKING PRODUKSI =====
+# ===== MENU: TRACKING PRODUKSI =====
 elif st.session_state["menu"] == "Tracking":
     st.header("🔍 TRACKING PRODUKSI")
     
@@ -611,10 +611,8 @@ elif st.session_state["menu"] == "Tracking":
             # Status icon untuk tahapan
             if total_in_stage > 0:
                 stage_icon = "🔄"  # Ada order di tahap ini
-                stage_color = "#3B82F6"  # Blue
             else:
                 stage_icon = "⏸️"  # Tidak ada order
-                stage_color = "#6B7280"  # Gray
             
             # Expander untuk setiap tahapan
             with st.expander(f"{stage_icon} **{stage_idx + 1}. {stage}** - ({total_in_stage} orders)", expanded=(total_in_stage > 0)):
@@ -741,73 +739,6 @@ elif st.session_state["menu"] == "Tracking":
     else:
         st.info("📝 Belum ada order untuk di-tracking.")
         
-        # Summary Statistics
-        st.markdown("---")
-        st.subheader("📊 Summary Statistics")
-        
-        stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
-        
-        total_orders = len(df_track_filtered)
-        avg_progress = df_track_filtered["Progress"].str.rstrip('%').astype('float').mean()
-        completed_orders = len(df_track_filtered[df_track_filtered["Progress"] == "100%"])
-        in_progress_orders = len(df_track_filtered[(df_track_filtered["Progress"] != "100%") & (df_track_filtered["Progress"] != "0%")])
-        
-        stat_col1.metric("📦 Total Orders", total_orders)
-        stat_col2.metric("✅ Completed", completed_orders, delta=f"{(completed_orders/total_orders*100):.0f}%" if total_orders > 0 else "0%")
-        stat_col3.metric("🔄 In Progress", in_progress_orders)
-        stat_col4.metric("📈 Avg Progress", f"{avg_progress:.1f}%")
-        
-        # Progress Distribution Chart
-        st.markdown("---")
-        st.subheader("📈 Distribution by Process Stage")
-        
-        stage_distribution = df_track_filtered["Proses Saat Ini"].value_counts()
-        fig_stage = px.bar(
-            x=stage_distribution.index, 
-            y=stage_distribution.values,
-            labels={'x': 'Tahapan Proses', 'y': 'Jumlah Order'},
-            title="Jumlah Order per Tahapan",
-            color=stage_distribution.values,
-            color_continuous_scale='Blues'
-        )
-        st.plotly_chart(fig_stage, use_container_width=True)
-        
-        # Timeline view
-        st.markdown("---")
-        st.subheader("📅 Timeline View")
-        
-        timeline_col1, timeline_col2 = st.columns(2)
-        
-        with timeline_col1:
-            st.markdown("**🔴 Overdue Orders (Past Due Date)**")
-            overdue_orders = df_track_filtered[
-                (df_track_filtered["Due Date"] < datetime.date.today()) & 
-                (df_track_filtered["Progress"] != "100%")
-            ]
-            if not overdue_orders.empty:
-                for idx, row in overdue_orders.iterrows():
-                    days_overdue = (datetime.date.today() - row["Due Date"]).days
-                    st.warning(f"**{row['Order ID']}** - {row['Produk'][:30]} | {row['Progress']} | ⏰ {days_overdue} hari terlambat")
-            else:
-                st.success("✅ Tidak ada order yang terlambat")
-        
-        with timeline_col2:
-            st.markdown("**🟡 Upcoming Deadlines (Next 7 Days)**")
-            upcoming_orders = df_track_filtered[
-                (df_track_filtered["Due Date"] >= datetime.date.today()) & 
-                (df_track_filtered["Due Date"] <= datetime.date.today() + datetime.timedelta(days=7)) &
-                (df_track_filtered["Progress"] != "100%")
-            ]
-            if not upcoming_orders.empty:
-                for idx, row in upcoming_orders.iterrows():
-                    days_left = (row["Due Date"] - datetime.date.today()).days
-                    st.info(f"**{row['Order ID']}** - {row['Produk'][:30]} | {row['Progress']} | ⏰ {days_left} hari lagi")
-            else:
-                st.success("✅ Tidak ada deadline mendesak")
-        
-    else:
-        st.info("📝 Belum ada order untuk di-tracking.")
-
 # ===== MENU: FROZEN ZONE =====
 elif st.session_state["menu"] == "Frozen":
     st.header("❄️ FROZEN ZONE")
