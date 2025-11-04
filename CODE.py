@@ -127,6 +127,9 @@ if st.session_state["menu"] == "Dashboard":
     df = st.session_state["data_produksi"]
     
     if not df.empty:
+        # Add tracking status column
+        df['Tracking Status'] = df.apply(lambda row: get_tracking_status_from_progress(row['Progress'], row['Status']), axis=1)
+        
         # Metrics
         col1, col2, col3, col4, col5 = st.columns(5)
         
@@ -144,6 +147,20 @@ if st.session_state["menu"] == "Dashboard":
         
         st.markdown("---")
         
+        # Tracking Status Metrics
+        st.subheader("🔍 Tracking Status Overview")
+        track_col1, track_col2, track_col3 = st.columns(3)
+        
+        track_pending = len(df[df['Tracking Status'] == 'Pending'])
+        track_ongoing = len(df[df['Tracking Status'] == 'On Going'])
+        track_done = len(df[df['Tracking Status'] == 'Done'])
+        
+        track_col1.metric("⏳ Pending", track_pending, delta=f"{(track_pending/total_orders*100):.0f}%")
+        track_col2.metric("🔄 On Going", track_ongoing, delta=f"{(track_ongoing/total_orders*100):.0f}%")
+        track_col3.metric("✅ Done", track_done, delta=f"{(track_done/total_orders*100):.0f}%")
+        
+        st.markdown("---")
+        
         # Charts
         col_chart1, col_chart2 = st.columns(2)
         
@@ -155,19 +172,16 @@ if st.session_state["menu"] == "Dashboard":
             st.plotly_chart(fig1, use_container_width=True)
         
         with col_chart2:
-            st.subheader("Orders by Buyer")
-            buyer_count = df["Buyer"].value_counts()
-            fig2 = px.bar(x=buyer_count.index, y=buyer_count.values, 
-                         labels={'x': 'Buyer', 'y': 'Jumlah Order'},
-                         title="Jumlah Order per Buyer",
-                         color=buyer_count.values,
-                         color_continuous_scale='Blues')
+            st.subheader("Tracking Status Distribution")
+            tracking_count = df["Tracking Status"].value_counts()
+            fig2 = px.pie(values=tracking_count.values, names=tracking_count.index, 
+                         title="Tracking Status", color_discrete_sequence=px.colors.qualitative.Pastel)
             st.plotly_chart(fig2, use_container_width=True)
         
         # Recent Orders
         st.subheader("🕒 Recent Orders (Last 10)")
         recent_df = df.sort_values("Order Date", ascending=False).head(10)
-        st.dataframe(recent_df[["Order ID", "Order Date", "Buyer", "Produk", "Qty", "Status", "Progress", "Proses Saat Ini"]], 
+        st.dataframe(recent_df[["Order ID", "Order Date", "Buyer", "Produk", "Qty", "Status", "Progress", "Proses Saat Ini", "Tracking Status"]], 
                      use_container_width=True, hide_index=True)
     else:
         st.info("📝 Belum ada data. Silakan input pesanan baru.")
@@ -263,13 +277,18 @@ elif st.session_state["menu"] == "Orders":
     df = st.session_state["data_produksi"]
     
     if not df.empty:
+        # Add tracking status column
+        df['Tracking Status'] = df.apply(lambda row: get_tracking_status_from_progress(row['Progress'], row['Status']), axis=1)
+        
         # Filter
-        col_f1, col_f2, col_f3 = st.columns(3)
+        col_f1, col_f2, col_f3, col_f4 = st.columns(4)
         with col_f1:
             filter_buyer = st.multiselect("Filter Buyer", df["Buyer"].unique())
         with col_f2:
             filter_status = st.multiselect("Filter Status", ["Accepted", "Pending", "Rejected"], default=["Accepted", "Pending", "Rejected"])
         with col_f3:
+            filter_tracking = st.multiselect("Filter Tracking Status", ["Pending", "On Going", "Done"])
+        with col_f4:
             search_order = st.text_input("🔍 Cari Order ID / Produk")
         
         df_filtered = df.copy()
@@ -277,6 +296,8 @@ elif st.session_state["menu"] == "Orders":
             df_filtered = df_filtered[df_filtered["Buyer"].isin(filter_buyer)]
         if filter_status:
             df_filtered = df_filtered[df_filtered["Status"].isin(filter_status)]
+        if filter_tracking:
+            df_filtered = df_filtered[df_filtered["Tracking Status"].isin(filter_tracking)]
         if search_order:
             df_filtered = df_filtered[
                 df_filtered["Order ID"].str.contains(search_order, case=False, na=False) | 
@@ -287,7 +308,7 @@ elif st.session_state["menu"] == "Orders":
               
         # Header
         st.markdown("<div class='order-table-header'>", unsafe_allow_html=True)
-        header_cols = st.columns([1, 1, 0.8, 1.5, 0.5, 1, 0.8, 1, 1, 0.8])
+        header_cols = st.columns([1, 1, 0.8, 1.3, 0.5, 1, 0.8, 0.9, 1, 1, 0.8])
         header_cols[0].markdown("**Order ID**")
         header_cols[1].markdown("**Order Date**")
         header_cols[2].markdown("**Buyer**")
@@ -297,7 +318,8 @@ elif st.session_state["menu"] == "Orders":
         header_cols[6].markdown("**Status**")
         header_cols[7].markdown("**Progress**")
         header_cols[8].markdown("**Proses**")
-        header_cols[9].markdown("**Action**")
+        header_cols[9].markdown("**Tracking**")
+        header_cols[10].markdown("**Action**")
         st.markdown("</div>", unsafe_allow_html=True)
         
         # Inisialisasi session state untuk konfirmasi delete
@@ -306,7 +328,7 @@ elif st.session_state["menu"] == "Orders":
         
         # Table with actions
         for idx, row in df_filtered.iterrows():
-            cols = st.columns([1, 1, 0.8, 1.5, 0.5, 1, 0.8, 1, 1, 0.8])
+            cols = st.columns([1, 1, 0.8, 1.3, 0.5, 1, 0.8, 0.9, 1, 1, 0.8])
             
             cols[0].write(row['Order ID'])
             cols[1].write(str(row['Order Date']))
@@ -325,7 +347,16 @@ elif st.session_state["menu"] == "Orders":
             cols[7].write(row['Progress'])
             cols[8].write(row['Proses Saat Ini'])
             
-            with cols[9]:
+            # Tracking Status dengan warna
+            tracking_colors = {
+                "Pending": ("⏳", "#6B7280"),
+                "On Going": ("🔄", "#3B82F6"),
+                "Done": ("✅", "#10B981")
+            }
+            track_icon, track_color = tracking_colors.get(row['Tracking Status'], ("⚪", "#6B7280"))
+            cols[9].markdown(f"<span style='color: {track_color};'>{track_icon} {row['Tracking Status']}</span>", unsafe_allow_html=True)
+            
+            with cols[10]:
                 action_col1, action_col2 = st.columns(2)
                 with action_col1:
                     if st.button("✏️", key=f"edit_{idx}", help="Edit Order", use_container_width=True):
@@ -379,6 +410,30 @@ elif st.session_state["menu"] == "Progress":
     df = st.session_state["data_produksi"]
     
     if not df.empty:
+        # Add tracking status column
+        df['Tracking Status'] = df.apply(lambda row: get_tracking_status_from_progress(row['Progress'], row['Status']), axis=1)
+        
+        # Filter tracking status
+        st.markdown("### Filter Order")
+        filter_cols = st.columns(3)
+        with filter_cols[0]:
+            filter_track_status = st.multiselect("Filter Tracking Status", ["Pending", "On Going", "Done"])
+        with filter_cols[1]:
+            filter_order_status = st.multiselect("Filter Order Status", ["Pending", "Accepted", "Rejected"])
+        with filter_cols[2]:
+            filter_buyer_progress = st.multiselect("Filter Buyer", df["Buyer"].unique().tolist())
+        
+        # Apply filters
+        df_progress_filtered = df.copy()
+        if filter_track_status:
+            df_progress_filtered = df_progress_filtered[df_progress_filtered["Tracking Status"].isin(filter_track_status)]
+        if filter_order_status:
+            df_progress_filtered = df_progress_filtered[df_progress_filtered["Status"].isin(filter_order_status)]
+        if filter_buyer_progress:
+            df_progress_filtered = df_progress_filtered[df_progress_filtered["Buyer"].isin(filter_buyer_progress)]
+        
+        st.markdown("---")
+        
         with st.container():
             st.markdown("""
             <div style='background-color: #1E3A8A; padding: 15px; border-radius: 8px; margin-bottom: 25px;'>
@@ -386,176 +441,196 @@ elif st.session_state["menu"] == "Progress":
             </div>
             """, unsafe_allow_html=True)
             
-            # Pilih order
-            order_ids = df["Order ID"].tolist()
-            
-            # Cek jika ada order yang di-edit dari menu Orders
-            default_idx = 0
-            if "edit_order_idx" in st.session_state:
-                edit_order_id = df.iloc[st.session_state["edit_order_idx"]]["Order ID"]
-                if edit_order_id in order_ids:
-                    default_idx = order_ids.index(edit_order_id)
-                del st.session_state["edit_order_idx"]
-            
-            selected_order = st.selectbox("Pilih Order ID", order_ids, index=default_idx)
-            
-            if selected_order:
-                order_data = df[df["Order ID"] == selected_order].iloc[0]
-                order_idx = df[df["Order ID"] == selected_order].index[0]
+            # Pilih order dari filtered data
+            if not df_progress_filtered.empty:
+                order_ids = df_progress_filtered["Order ID"].tolist()
                 
-                # Custom CSS untuk alignment yang sempurna
-                st.markdown("""
-                <style>
-                .progress-label-row {
-                    display: flex;
-                    align-items: center;
-                    height: 45px;
-                    margin-bottom: 10px;
-                    font-weight: bold;
-                }
-                .progress-slider-label {
-                    display: flex;
-                    align-items: center;
-                    height: 48px;
-                    margin-bottom: 0px;
-                    padding-top: 5px;
-                    font-weight: bold;
-                }
-                .progress-textarea-label {
-                    display: flex;
-                    align-items: flex-start;
-                    padding-top: 10px;
-                    margin-bottom: 0px;
-                    font-weight: bold;
-                }
-                </style>
-                """, unsafe_allow_html=True)
+                # Cek jika ada order yang di-edit dari menu Orders
+                default_idx = 0
+                if "edit_order_idx" in st.session_state:
+                    edit_order_id = df.iloc[st.session_state["edit_order_idx"]]["Order ID"]
+                    if edit_order_id in order_ids:
+                        default_idx = order_ids.index(edit_order_id)
+                    del st.session_state["edit_order_idx"]
                 
-                progress_col1, progress_col2 = st.columns([1, 3])
+                selected_order = st.selectbox("Pilih Order ID", order_ids, index=default_idx)
                 
-                with progress_col1:
-                    st.markdown("<div class='progress-label-row'>Order ID</div>", unsafe_allow_html=True)
-                    st.markdown("<div class='progress-label-row'>Product</div>", unsafe_allow_html=True)
-                    st.markdown("<div class='progress-label-row'>Proses Saat Ini</div>", unsafe_allow_html=True)
-                    st.markdown("<div class='progress-label-row'>Status Order</div>", unsafe_allow_html=True)
-                    st.markdown("<div class='progress-slider-label'>Persentase Progress</div>", unsafe_allow_html=True)
-                    st.markdown("<div class='progress-textarea-label'></div>", unsafe_allow_html=True)
-                
-                with progress_col2:
-                    st.text_input("", value=order_data["Order ID"], disabled=True, label_visibility="collapsed", key=f"orderid_{selected_order}")
-                    st.text_input("", value=order_data["Produk"], disabled=True, label_visibility="collapsed", key=f"produk_{selected_order}")
+                if selected_order:
+                    order_data = df[df["Order ID"] == selected_order].iloc[0]
+                    order_idx = df[df["Order ID"] == selected_order].index[0]
                     
-                    proses_list = get_tracking_stages()
-                    current_proses_idx = proses_list.index(order_data["Proses Saat Ini"]) if order_data["Proses Saat Ini"] in proses_list else 0
+                    # Tampilkan tracking status saat ini
+                    current_tracking = get_tracking_status_from_progress(order_data['Progress'], order_data['Status'])
                     
-                    # Selectbox dengan key unik untuk trigger update
-                    current_proses = st.selectbox("", proses_list, 
-                                                  index=current_proses_idx,
-                                                  label_visibility="collapsed",
-                                                  key=f"proses_{selected_order}")
-                    
-                    status_list = ["Pending", "Accepted", "Rejected"]
-                    status_idx = status_list.index(order_data["Status"]) if order_data["Status"] in status_list else 0
-                    status_order = st.selectbox("", status_list, 
-                                               index=status_idx,
-                                               label_visibility="collapsed",
-                                               key=f"status_{selected_order}")
-                    
-                    # Mapping progress berdasarkan stage
-                    stage_to_progress = {
-                        "Pre Order": 0,
-                        "Order di Supplier": 10,
-                        "Warehouse": 20,
-                        "Fitting 1": 30,
-                        "Amplas": 40,
-                        "Revisi 1": 50,
-                        "Spray": 60,
-                        "Fitting 2": 70,
-                        "Revisi Fitting 2": 80,
-                        "Packaging": 90,
-                        "Pengiriman": 100
+                    tracking_status_colors = {
+                        "Pending": ("⏳", "#6B7280"),
+                        "On Going": ("🔄", "#3B82F6"),
+                        "Done": ("✅", "#10B981")
                     }
+                    track_icon, track_color = tracking_status_colors.get(current_tracking, ("⚪", "#6B7280"))
                     
-                    # Auto update progress berdasarkan proses
-                    auto_progress = stage_to_progress.get(current_proses, 0)
+                    st.markdown(f"""
+                    <div style='background-color: {track_color}22; padding: 10px; border-radius: 8px; border-left: 4px solid {track_color}; margin-bottom: 20px;'>
+                        <span style='color: {track_color}; font-weight: bold; font-size: 1.1em;'>{track_icon} Current Tracking Status: {current_tracking}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
                     
-                    # Info box untuk notifikasi auto progress
-                    current_saved_progress = int(order_data["Progress"].rstrip('%')) if order_data["Progress"] else 0
-                    if auto_progress != current_saved_progress:
-                        st.info(f"💡 Progress otomatis: {auto_progress}% untuk tahap '{current_proses}'")
-                    
-                    # Checkbox untuk manual override
-                    use_manual_progress = st.checkbox("Override progress manual", value=False, 
-                                                     key=f"manual_{selected_order}",
-                                                     help="Centang jika ingin mengatur progress secara manual")
-                    
-                    if use_manual_progress:
-                        progress_value = st.slider("", 0, 100, current_saved_progress, 
-                                           label_visibility="collapsed",
-                                           key=f"slider_{selected_order}",
-                                           help="Slide untuk mengatur progress manual")
-                    else:
-                        # Gunakan auto progress
-                        progress_value = auto_progress
-                        st.slider("", 0, 100, progress_value, label_visibility="collapsed", 
-                                disabled=True, 
-                                key=f"slider_auto_{selected_order}",
-                                help="Progress otomatis berdasarkan tahapan proses")
-                    
-                    # Display progress dengan warna
-                    if progress_value == 100:
-                        progress_color = "#10B981"  # Green
-                    elif progress_value >= 50:
-                        progress_color = "#3B82F6"  # Blue
-                    elif progress_value >= 25:
-                        progress_color = "#F59E0B"  # Orange
-                    else:
-                        progress_color = "#EF4444"  # Red
-                        
-                    st.markdown(f"<h2 style='color: {progress_color}; margin-top: -15px; margin-bottom: 20px;'>{progress_value}%</h2>", unsafe_allow_html=True)
-                    
-                    notes = st.text_area("", value=str(order_data["Keterangan"]) if order_data["Keterangan"] else "", 
-                                        placeholder="Masukkan catatan...", 
-                                        label_visibility="collapsed", 
-                                        key=f"notes_{selected_order}",
-                                        height=100)
-                
-                st.markdown("")
-                
-                # Progress mapping info
-                with st.expander("ℹ️ Lihat Mapping Progress per Tahapan"):
+                    # Custom CSS untuk alignment yang sempurna
                     st.markdown("""
-                    | Tahapan | Progress |
-                    |---------|----------|
-                    | Pre Order | 0% |
-                    | Order di Supplier | 10% |
-                    | Warehouse | 20% |
-                    | Fitting 1 | 30% |
-                    | Amplas | 40% |
-                    | Revisi 1 | 50% |
-                    | Spray | 60% |
-                    | Fitting 2 | 70% |
-                    | Revisi Fitting 2 | 80% |
-                    | Packaging | 90% |
-                    | Pengiriman | 100% |
-                    """)
-                
-                btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 2])
-                
-                with btn_col1:
-                    if st.button("🔄 RESET", use_container_width=True):
-                        st.rerun()
-                
-                with btn_col2:
-                    if st.button("💾 SAVE PROGRESS", use_container_width=True, type="primary"):
-                        st.session_state["data_produksi"].at[order_idx, "Progress"] = f"{progress_value}%"
-                        st.session_state["data_produksi"].at[order_idx, "Proses Saat Ini"] = current_proses
-                        st.session_state["data_produksi"].at[order_idx, "Keterangan"] = notes
-                        st.session_state["data_produksi"].at[order_idx, "Status"] = status_order
+                    <style>
+                    .progress-label-row {
+                        display: flex;
+                        align-items: center;
+                        height: 38px;
+                        margin-bottom: 8px;
+                        font-weight: bold;
+                    }
+                    .progress-slider-label {
+                        display: flex;
+                        align-items: center;
+                        height: 48px;
+                        margin-bottom: 0px;
+                        padding-top: 5px;
+                        font-weight: bold;
+                    }
+                    .progress-textarea-label {
+                        display: flex;
+                        align-items: flex-start;
+                        padding-top: 10px;
+                        margin-bottom: 0px;
+                        font-weight: bold;
+                    }
+                    </style>
+                    """, unsafe_allow_html=True)
+                    
+                    progress_col1, progress_col2 = st.columns([1, 3])
+                    
+                    with progress_col1:
+                        st.markdown("<div class='progress-label-row'>Order ID</div>", unsafe_allow_html=True)
+                        st.markdown("<div class='progress-label-row'>Product</div>", unsafe_allow_html=True)
+                        st.markdown("<div class='progress-label-row'>Proses Saat Ini</div>", unsafe_allow_html=True)
+                        st.markdown("<div class='progress-label-row'>Status Order</div>", unsafe_allow_html=True)
+                        st.markdown("<div class='progress-slider-label'>Persentase Progress</div>", unsafe_allow_html=True)
+                        st.markdown("<div class='progress-textarea-label'>Catatan</div>", unsafe_allow_html=True)
+                    
+                    with progress_col2:
+                        st.text_input("", value=order_data["Order ID"], disabled=True, label_visibility="collapsed", key=f"orderid_{selected_order}")
+                        st.text_input("", value=order_data["Produk"], disabled=True, label_visibility="collapsed", key=f"produk_{selected_order}")
                         
-                        if save_data(st.session_state["data_produksi"]):
-                            st.success(f"✅ Progress order {selected_order} berhasil diupdate!")
-                            st.balloons()
+                        proses_list = get_tracking_stages()
+                        current_proses_idx = proses_list.index(order_data["Proses Saat Ini"]) if order_data["Proses Saat Ini"] in proses_list else 0
+                        
+                        # Selectbox dengan key unik untuk trigger update
+                        current_proses = st.selectbox("", proses_list, 
+                                                      index=current_proses_idx,
+                                                      label_visibility="collapsed",
+                                                      key=f"proses_{selected_order}")
+                        
+                        status_list = ["Pending", "Accepted", "Rejected"]
+                        status_idx = status_list.index(order_data["Status"]) if order_data["Status"] in status_list else 0
+                        status_order = st.selectbox("", status_list, 
+                                                   index=status_idx,
+                                                   label_visibility="collapsed",
+                                                   key=f"status_{selected_order}")
+                        
+                        # Mapping progress berdasarkan stage
+                        stage_to_progress = {
+                            "Pre Order": 0,
+                            "Order di Supplier": 10,
+                            "Warehouse": 20,
+                            "Fitting 1": 30,
+                            "Amplas": 40,
+                            "Revisi 1": 50,
+                            "Spray": 60,
+                            "Fitting 2": 70,
+                            "Revisi Fitting 2": 80,
+                            "Packaging": 90,
+                            "Pengiriman": 100
+                        }
+                        
+                        # Auto update progress berdasarkan proses
+                        auto_progress = stage_to_progress.get(current_proses, 0)
+                        
+                        # Info box untuk notifikasi auto progress
+                        current_saved_progress = int(order_data["Progress"].rstrip('%')) if order_data["Progress"] else 0
+                        if auto_progress != current_saved_progress:
+                            st.info(f"💡 Progress otomatis: {auto_progress}% untuk tahap '{current_proses}'")
+                        
+                        # Checkbox untuk manual override
+                        use_manual_progress = st.checkbox("Override progress manual", value=False, 
+                                                         key=f"manual_{selected_order}",
+                                                         help="Centang jika ingin mengatur progress secara manual")
+                        
+                        if use_manual_progress:
+                            progress_value = st.slider("", 0, 100, current_saved_progress, 
+                                               label_visibility="collapsed",
+                                               key=f"slider_{selected_order}",
+                                               help="Slide untuk mengatur progress manual")
+                        else:
+                            # Gunakan auto progress
+                            progress_value = auto_progress
+                            st.slider("", 0, 100, progress_value, label_visibility="collapsed", 
+                                    disabled=True, 
+                                    key=f"slider_auto_{selected_order}",
+                                    help="Progress otomatis berdasarkan tahapan proses")
+                        
+                        # Display progress dengan warna
+                        if progress_value == 100:
+                            progress_color = "#10B981"  # Green
+                        elif progress_value >= 50:
+                            progress_color = "#3B82F6"  # Blue
+                        elif progress_value >= 25:
+                            progress_color = "#F59E0B"  # Orange
+                        else:
+                            progress_color = "#EF4444"  # Red
+                            
+                        st.markdown(f"<h2 style='color: {progress_color}; margin-top: -15px; margin-bottom: 20px;'>{progress_value}%</h2>", unsafe_allow_html=True)
+                        
+                        notes = st.text_area("", value=str(order_data["Keterangan"]) if order_data["Keterangan"] else "", 
+                                            placeholder="Masukkan catatan...", 
+                                            label_visibility="collapsed", 
+                                            key=f"notes_{selected_order}",
+                                            height=100)
+                    
+                    st.markdown("")
+                    
+                    # Progress mapping info
+                    with st.expander("ℹ️ Lihat Mapping Progress per Tahapan"):
+                        st.markdown("""
+                        | Tahapan | Progress |
+                        |---------|----------|
+                        | Pre Order | 0% |
+                        | Order di Supplier | 10% |
+                        | Warehouse | 20% |
+                        | Fitting 1 | 30% |
+                        | Amplas | 40% |
+                        | Revisi 1 | 50% |
+                        | Spray | 60% |
+                        | Fitting 2 | 70% |
+                        | Revisi Fitting 2 | 80% |
+                        | Packaging | 90% |
+                        | Pengiriman | 100% |
+                        """)
+                    
+                    btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 2])
+                    
+                    with btn_col1:
+                        if st.button("🔄 RESET", use_container_width=True):
+                            st.rerun()
+                    
+                    with btn_col2:
+                        if st.button("💾 SAVE PROGRESS", use_container_width=True, type="primary"):
+                            st.session_state["data_produksi"].at[order_idx, "Progress"] = f"{progress_value}%"
+                            st.session_state["data_produksi"].at[order_idx, "Proses Saat Ini"] = current_proses
+                            st.session_state["data_produksi"].at[order_idx, "Keterangan"] = notes
+                            st.session_state["data_produksi"].at[order_idx, "Status"] = status_order
+                            
+                            if save_data(st.session_state["data_produksi"]):
+                                new_tracking = get_tracking_status_from_progress(f"{progress_value}%", status_order)
+                                st.success(f"✅ Progress order {selected_order} berhasil diupdate! Tracking Status: {new_tracking}")
+                                st.balloons()
+            else:
+                st.warning("⚠️ Tidak ada order yang sesuai dengan filter yang dipilih.")
     else:
         st.info("📝 Belum ada order untuk diupdate.")
                         
