@@ -693,34 +693,33 @@ elif st.session_state["menu"] == "Tracking":
         # Loop through each stage and display orders in that stage
         for stage_idx, stage in enumerate(stages):
             # Filter orders yang berada di tahap ini
-            orders_in_stage = df_track_filtered[df_track_filtered["Proses Saat Ini"] == stage]
+            orders_in_stage = df_track_filtered[df_track_filtered["Proses Saat Ini"] == stage].copy()
             
             # Hitung jumlah order dan tentukan status tracking
             total_in_stage = len(orders_in_stage)
             
-            # Tentukan status tracking berdasarkan progress DAN status order
-            def get_tracking_status(row):
-                progress_pct = int(row['Progress'].rstrip('%')) if row['Progress'] else 0
+            # Hitung tracking status secara manual
+            pending_track = 0
+            ongoing_track = 0
+            done_track = 0
+            
+            for idx, row in orders_in_stage.iterrows():
+                try:
+                    progress_pct = int(row['Progress'].rstrip('%')) if row['Progress'] else 0
+                except:
+                    progress_pct = 0
+                
                 order_status = row['Status']
                 
-                # Jika order Rejected, maka tracking status = Pending (tidak akan lanjut)
+                # Tentukan tracking status
                 if order_status == "Rejected":
-                    return "pending"
-                # Jika progress 100%, maka Done
+                    pending_track += 1
                 elif progress_pct == 100:
-                    return "done"
-                # Jika progress 0%, maka Pending
+                    done_track += 1
                 elif progress_pct == 0:
-                    return "pending"
-                # Jika progress 1-99% dan Accepted, maka On Going
+                    pending_track += 1
                 else:
-                    return "ongoing"
-            
-            orders_in_stage['tracking_status'] = orders_in_stage.apply(get_tracking_status, axis=1)
-            
-            pending_track = len(orders_in_stage[orders_in_stage['tracking_status'] == 'pending'])
-            ongoing_track = len(orders_in_stage[orders_in_stage['tracking_status'] == 'ongoing'])
-            done_track = len(orders_in_stage[orders_in_stage['tracking_status'] == 'done'])
+                    ongoing_track += 1
             
             # Status icon untuk tahapan
             if total_in_stage > 0:
@@ -770,7 +769,10 @@ elif st.session_state["menu"] == "Tracking":
                         order_cols[5].markdown(f"<span style='color: {status_color}; font-weight: bold;'>{status_icon} {row['Status']}</span>", unsafe_allow_html=True)
                         
                         # Tentukan tracking status berdasarkan progress dan order status
-                        progress_pct = int(row['Progress'].rstrip('%')) if row['Progress'] else 0
+                        try:
+                            progress_pct = int(row['Progress'].rstrip('%')) if row['Progress'] else 0
+                        except:
+                            progress_pct = 0
                         
                         if row['Status'] == "Rejected":
                             tracking_status = "⏳ Pending"
