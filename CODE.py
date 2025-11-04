@@ -603,10 +603,29 @@ elif st.session_state["menu"] == "Tracking":
             # Hitung jumlah order dan tentukan status tracking
             total_in_stage = len(orders_in_stage)
             
-            # Tentukan status tracking berdasarkan progress
-            pending_track = len(orders_in_stage[orders_in_stage["Progress"] == "0%"])
-            ongoing_track = len(orders_in_stage[(orders_in_stage["Progress"] != "0%") & (orders_in_stage["Progress"] != "100%")])
-            done_track = len(orders_in_stage[orders_in_stage["Progress"] == "100%"])
+            # Tentukan status tracking berdasarkan progress DAN status order
+            def get_tracking_status(row):
+                progress_pct = int(row['Progress'].rstrip('%')) if row['Progress'] else 0
+                order_status = row['Status']
+                
+                # Jika order Rejected, maka tracking status = Pending (tidak akan lanjut)
+                if order_status == "Rejected":
+                    return "pending"
+                # Jika progress 100%, maka Done
+                elif progress_pct == 100:
+                    return "done"
+                # Jika progress 0%, maka Pending
+                elif progress_pct == 0:
+                    return "pending"
+                # Jika progress 1-99% dan Accepted, maka On Going
+                else:
+                    return "ongoing"
+            
+            orders_in_stage['tracking_status'] = orders_in_stage.apply(get_tracking_status, axis=1)
+            
+            pending_track = len(orders_in_stage[orders_in_stage['tracking_status'] == 'pending'])
+            ongoing_track = len(orders_in_stage[orders_in_stage['tracking_status'] == 'ongoing'])
+            done_track = len(orders_in_stage[orders_in_stage['tracking_status'] == 'done'])
             
             # Status icon untuk tahapan
             if total_in_stage > 0:
@@ -627,38 +646,51 @@ elif st.session_state["menu"] == "Tracking":
                     st.markdown("---")
                     
                     # Table header
-                    header_cols = st.columns([1.2, 1, 1.5, 1.2, 0.8, 1])
+                    header_cols = st.columns([1.2, 1, 1.2, 1.2, 0.7, 1, 1])
                     header_cols[0].markdown("**Order ID**")
                     header_cols[1].markdown("**Order Date**")
                     header_cols[2].markdown("**Buyer**")
                     header_cols[3].markdown("**Produk**")
                     header_cols[4].markdown("**Qty**")
-                    header_cols[5].markdown("**Status**")
+                    header_cols[5].markdown("**Order Status**")
+                    header_cols[6].markdown("**Tracking Status**")
                     
                     # Display orders
                     for idx, row in orders_in_stage.iterrows():
-                        order_cols = st.columns([1.2, 1, 1.5, 1.2, 0.8, 1])
+                        order_cols = st.columns([1.2, 1, 1.2, 1.2, 0.7, 1, 1])
                         
                         order_cols[0].write(row['Order ID'])
                         order_cols[1].write(str(row['Order Date']))
                         order_cols[2].write(row['Buyer'])
-                        order_cols[3].write(row['Produk'][:25] + "..." if len(row['Produk']) > 25 else row['Produk'])
+                        order_cols[3].write(row['Produk'][:20] + "..." if len(row['Produk']) > 20 else row['Produk'])
                         order_cols[4].write(f"{row['Qty']} pcs")
                         
-                        # Tentukan status tracking berdasarkan progress
+                        # Order Status dengan warna
+                        order_status_colors = {
+                            "Accepted": ("🟢", "#10B981"),
+                            "Pending": ("🟡", "#F59E0B"),
+                            "Rejected": ("🔴", "#EF4444")
+                        }
+                        status_icon, status_color = order_status_colors.get(row['Status'], ("⚪", "#6B7280"))
+                        order_cols[5].markdown(f"<span style='color: {status_color}; font-weight: bold;'>{status_icon} {row['Status']}</span>", unsafe_allow_html=True)
+                        
+                        # Tentukan tracking status berdasarkan progress dan order status
                         progress_pct = int(row['Progress'].rstrip('%')) if row['Progress'] else 0
                         
-                        if progress_pct == 0:
+                        if row['Status'] == "Rejected":
                             tracking_status = "⏳ Pending"
-                            status_color = "#6B7280"  # Gray
+                            track_color = "#6B7280"  # Gray
                         elif progress_pct == 100:
                             tracking_status = "✅ Done"
-                            status_color = "#10B981"  # Green
+                            track_color = "#10B981"  # Green
+                        elif progress_pct == 0:
+                            tracking_status = "⏳ Pending"
+                            track_color = "#6B7280"  # Gray
                         else:
                             tracking_status = "🔄 On Going"
-                            status_color = "#3B82F6"  # Blue
+                            track_color = "#3B82F6"  # Blue
                         
-                        order_cols[5].markdown(f"<span style='color: {status_color}; font-weight: bold;'>{tracking_status}</span>", unsafe_allow_html=True)
+                        order_cols[6].markdown(f"<span style='color: {track_color}; font-weight: bold;'>{tracking_status}</span>", unsafe_allow_html=True)
                         
                         st.markdown("<div style='margin: 5px 0; border-bottom: 1px solid #374151;'></div>", unsafe_allow_html=True)
                     
@@ -679,29 +711,39 @@ elif st.session_state["menu"] == "Tracking":
         stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
         
         total_orders = len(df_track_filtered)
-        avg_progress = df_track_filtered["Progress"].str.rstrip('%').astype('float').mean()
-        completed_orders = len(df_track_filtered[df_track_filtered["Progress"] == "100%"])
-        in_progress_orders = len(df_track_filtered[(df_track_filtered["Progress"] != "100%") & (df_track_filtered["Progress"] != "0%")])
         
-        stat_col1.metric("📦 Total Orders", total_orders)
-        stat_col2.metric("✅ Done", completed_orders, delta=f"{(completed_orders/total_orders*100):.0f}%" if total_orders > 0 else "0%")
-        stat_col3.metric("🔄 On Going", in_progress_orders)
-        stat_col4.metric("📈 Avg Progress", f"{avg_progress:.1f}%")
+        if total_orders > 0:
+            avg_progress = df_track_filtered["Progress"].str.rstrip('%').astype('float').mean()
+            completed_orders = len(df_track_filtered[df_track_filtered["Progress"] == "100%"])
+            in_progress_orders = len(df_track_filtered[(df_track_filtered["Progress"] != "100%") & (df_track_filtered["Progress"] != "0%") & (df_track_filtered["Status"] != "Rejected")])
+            
+            stat_col1.metric("📦 Total Orders", total_orders)
+            stat_col2.metric("✅ Done", completed_orders, delta=f"{(completed_orders/total_orders*100):.0f}%")
+            stat_col3.metric("🔄 On Going", in_progress_orders)
+            stat_col4.metric("📈 Avg Progress", f"{avg_progress:.1f}%")
+        else:
+            stat_col1.metric("📦 Total Orders", 0)
+            stat_col2.metric("✅ Done", 0)
+            stat_col3.metric("🔄 On Going", 0)
+            stat_col4.metric("📈 Avg Progress", "0%")
         
         # Progress Distribution Chart
         st.markdown("---")
         st.subheader("📈 Distribution by Process Stage")
         
-        stage_distribution = df_track_filtered["Proses Saat Ini"].value_counts()
-        fig_stage = px.bar(
-            x=stage_distribution.index, 
-            y=stage_distribution.values,
-            labels={'x': 'Tahapan Proses', 'y': 'Jumlah Order'},
-            title="Jumlah Order per Tahapan",
-            color=stage_distribution.values,
-            color_continuous_scale='Blues'
-        )
-        st.plotly_chart(fig_stage, use_container_width=True)
+        if not df_track_filtered.empty:
+            stage_distribution = df_track_filtered["Proses Saat Ini"].value_counts()
+            fig_stage = px.bar(
+                x=stage_distribution.index, 
+                y=stage_distribution.values,
+                labels={'x': 'Tahapan Proses', 'y': 'Jumlah Order'},
+                title="Jumlah Order per Tahapan",
+                color=stage_distribution.values,
+                color_continuous_scale='Blues'
+            )
+            st.plotly_chart(fig_stage, use_container_width=True)
+        else:
+            st.info("Tidak ada data untuk ditampilkan")
         
         # Timeline view
         st.markdown("---")
@@ -713,7 +755,8 @@ elif st.session_state["menu"] == "Tracking":
             st.markdown("**🔴 Overdue Orders (Past Due Date)**")
             overdue_orders = df_track_filtered[
                 (df_track_filtered["Due Date"] < datetime.date.today()) & 
-                (df_track_filtered["Progress"] != "100%")
+                (df_track_filtered["Progress"] != "100%") &
+                (df_track_filtered["Status"] != "Rejected")
             ]
             if not overdue_orders.empty:
                 for idx, row in overdue_orders.iterrows():
@@ -727,7 +770,8 @@ elif st.session_state["menu"] == "Tracking":
             upcoming_orders = df_track_filtered[
                 (df_track_filtered["Due Date"] >= datetime.date.today()) & 
                 (df_track_filtered["Due Date"] <= datetime.date.today() + datetime.timedelta(days=7)) &
-                (df_track_filtered["Progress"] != "100%")
+                (df_track_filtered["Progress"] != "100%") &
+                (df_track_filtered["Status"] != "Rejected")
             ]
             if not upcoming_orders.empty:
                 for idx, row in upcoming_orders.iterrows():
