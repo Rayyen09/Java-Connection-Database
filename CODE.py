@@ -474,7 +474,7 @@ elif st.session_state["menu"] == "Progress":
                 df_filtered_display = df_filtered_display[df_filtered_display["Buyer"].isin(filter_buyer_progress)]
             
             # Tampilkan hasil filter
-            if not df_filtered_display.empty and (filter_track_st
+            if not df_filtered_display.empty and (filter_track_st)
                         
 # ===== MENU: TRACKING PRODUKSI =====
 elif st.session_state["menu"] == "Tracking":
