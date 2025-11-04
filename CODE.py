@@ -65,6 +65,26 @@ def init_tracking_data(order_id):
     stages = get_tracking_stages()
     return {stage: {"status": "Pending", "date": None} for stage in stages}
 
+def get_tracking_status_from_progress(progress_str, order_status):
+    """Menentukan tracking status berdasarkan progress dan order status"""
+    try:
+        progress_pct = int(progress_str.rstrip('%')) if progress_str else 0
+    except:
+        progress_pct = 0
+    
+    # Jika order Rejected, tracking tetap Pending
+    if order_status == "Rejected":
+        return "Pending"
+    # Jika progress 100%, Done
+    elif progress_pct == 100:
+        return "Done"
+    # Jika progress 0%, Pending
+    elif progress_pct == 0:
+        return "Pending"
+    # Jika progress 1-99%, On Going
+    else:
+        return "On Going"
+
 # ===== INISIALISASI =====
 if "data_produksi" not in st.session_state:
     st.session_state["data_produksi"] = load_data()
