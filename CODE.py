@@ -5,44 +5,11 @@ import json
 import os
 import plotly.express as px
 import plotly.figure_factory as ff
- ===== TAMBAHKAN KE BAGIAN ATAS FILE (SETELAH IMPORTS) =====
-
-import streamlit as st
 from streamlit.components.v1 import html
 
 # ===== FUNGSI DETEKSI DEVICE =====
 def get_device_type():
     """Deteksi tipe device menggunakan JavaScript"""
-    detect_script = """
-    <script>
-        function getDeviceType() {
-            const width = window.innerWidth;
-            let deviceType = 'desktop';
-            
-            if (width < 768) {
-                deviceType = 'mobile';
-            } else if (width < 1024) {
-                deviceType = 'tablet';
-            }
-            
-            // Send to Streamlit
-            window.parent.postMessage({
-                type: 'streamlit:setComponentValue',
-                value: deviceType
-            }, '*');
-        }
-        
-        getDeviceType();
-        
-        // Re-detect on resize (dengan debounce)
-        let resizeTimer;
-        window.addEventListener('resize', function() {
-            clearTimeout(resizeTimer);
-            resizeTimer = setTimeout(getDeviceType, 500);
-        });
-    </script>
-    """
-    
     # Fallback: gunakan session state untuk persist
     if 'device_type' not in st.session_state:
         st.session_state['device_type'] = 'desktop'  # default
@@ -319,6 +286,24 @@ def show_device_indicator():
         {icon_map.get(device, '🖥️')} <strong>{device.upper()}</strong>
     </div>
     """, unsafe_allow_html=True)
+
+# ===== KONFIGURASI DATABASE =====
+DATABASE_PATH = "ppic_data.json"
+BUYER_DB_PATH = "buyers.json"
+PRODUCT_DB_PATH = "products.json"
+
+st.set_page_config(
+    page_title="PPIC-DSS System", 
+    layout="wide",
+    page_icon="🏭",
+    initial_sidebar_state="collapsed"
+)
+
+# ===== INJECT CSS RESPONSIVE =====
+inject_responsive_css()
+
+# ===== ADD MOBILE MENU BUTTON =====
+add_mobile_menu_button()
 
 # ===== KONFIGURASI DATABASE =====
 DATABASE_PATH = "ppic_data.json"
