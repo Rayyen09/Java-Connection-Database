@@ -699,39 +699,172 @@ elif st.session_state["menu"] == "Orders":
     df = st.session_state["data_produksi"]
     
     if not df.empty:
-        # ... (filter code sama)
+        df['Tracking Status'] = df.apply(lambda row: get_tracking_status_from_progress(row['Progress'], row['Status']), axis=1)
         
+        # Filters
+        col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+        with col_f1:
+            filter_buyer = st.multiselect("Filter Buyer", df["Buyer"].unique())
+        with col_f2:
+            filter_status = st.multiselect("Filter Status", ["Accepted", "Pending", "Rejected"], default=["Accepted", "Pending", "Rejected"])
+        with col_f3:
+            filter_tracking = st.multiselect("Filter Tracking Status", ["Pending", "On Going", "Done"])
+        with col_f4:
+            search_order = st.text_input("🔍 Cari Order ID / Produk")
+        
+        df_filtered = df.copy()
+        if filter_buyer:
+            df_filtered = df_filtered[df_filtered["Buyer"].isin(filter_buyer)]
+        if filter_status:
+            df_filtered = df_filtered[df_filtered["Status"].isin(filter_status)]
+        if filter_tracking:
+            df_filtered = df_filtered[df_filtered["Tracking Status"].isin(filter_tracking)]
+        if search_order:
+            df_filtered = df_filtered[
+                df_filtered["Order ID"].str.contains(search_order, case=False, na=False) | 
+                df_filtered["Produk"].str.contains(search_order, case=False, na=False)
+            ]
+        
+        st.markdown("---")
+        
+        # Check if mobile
         if is_mobile():
-            # MOBILE: Card-based view
+            # ===== MOBILE VIEW: CARD-BASED =====
+            st.info(f"📦 Menampilkan {len(df_filtered)} order")
+            
             for idx, row in df_filtered.iterrows():
-                with st.expander(f"📦 {row['Order ID']} - {row['Buyer']}"):
-                    col1, col2 = st.columns(2)
+                with st.expander(f"📦 {row['Order ID']} - {row['Buyer']}", expanded=False):
+                    # Order details
+                    detail_col1, detail_col2 = st.columns(2)
                     
-                    with col1:
+                    with detail_col1:
                         st.write(f"**Produk:** {row['Produk']}")
-                        st.write(f"**Qty:** {row['Qty']}")
+                        st.write(f"**Qty:** {row['Qty']} pcs")
                         st.write(f"**Status:** {row['Status']}")
-                    
-                    with col2:
-                        st.write(f"**Due Date:** {row['Due Date']}")
                         st.write(f"**Progress:** {row['Progress']}")
+                    
+                    with detail_col2:
+                        st.write(f"**Order Date:** {row['Order Date']}")
+                        st.write(f"**Due Date:** {row['Due Date']}")
+                        st.write(f"**Prioritas:** {row['Prioritas']}")
                         st.write(f"**Proses:** {row['Proses Saat Ini']}")
                     
+                    # Tracking Status
+                    tracking_status = row['Tracking Status']
+                    tracking_colors = {
+                        "Pending": "🟡",
+                        "On Going": "🔵",
+                        "Done": "🟢"
+                    }
+                    st.write(f"**Tracking:** {tracking_colors.get(tracking_status, '⚪')} {tracking_status}")
+                    
                     # Action buttons
+                    st.markdown("---")
                     btn_col1, btn_col2 = st.columns(2)
                     with btn_col1:
-                        if st.button("✏️ Edit", key=f"edit_{idx}", use_container_width=True):
+                        if st.button("✏️ Edit Order", key=f"edit_{idx}", use_container_width=True):
                             st.session_state["edit_order_idx"] = idx
                             st.session_state["menu"] = "Progress"
                             st.rerun()
                     with btn_col2:
-                        if st.button("🗑️ Delete", key=f"del_{idx}", use_container_width=True):
-                            # Delete logic
-                            pass
+                        if st.button("🗑️ Delete Order", key=f"del_{idx}", use_container_width=True):
+                            if st.session_state.get(f"confirm_delete_{idx}", False):
+                                # Confirmed delete
+                                st.session_state["data_produksi"].drop(idx, inplace=True)
+                                st.session_state["data_produksi"].reset_index(drop=True, inplace=True)
+                                save_data(st.session_state["data_produksi"])
+                                st.success(f"✅ Order {row['Order ID']} berhasil dihapus!")
+                                st.rerun()
+                            else:
+                                # Ask for confirmation
+                                st.session_state[f"confirm_delete_{idx}"] = True
+                                st.rerun()
         else:
-            # DESKTOP/TABLET: Table view (existing code)
-            # ... (your existing table code)
-            pass
+            # ===== DESKTOP/TABLET VIEW: TABLE =====
+            st.info(f"📦 Menampilkan {len(df_filtered)} order")
+            
+            header_cols = st.columns([1, 1, 0.8, 1.3, 0.5, 1, 0.8, 0.9, 1, 1, 0.8])
+            header_cols[0].markdown("**Order ID**")
+            header_cols[1].markdown("**Order Date**")
+            header_cols[2].markdown("**Buyer**")
+            header_cols[3].markdown("**Produk**")
+            header_cols[4].markdown("**Qty**")
+            header_cols[5].markdown("**Due Date**")
+            header_cols[6].markdown("**Status**")
+            header_cols[7].markdown("**Progress**")
+            header_cols[8].markdown("**Proses**")
+            header_cols[9].markdown("**Tracking**")
+            header_cols[10].markdown("**Action**")
+            
+            if "delete_confirm" not in st.session_state:
+                st.session_state["delete_confirm"] = {}
+            
+            for idx, row in df_filtered.iterrows():
+                cols = st.columns([1, 1, 0.8, 1.3, 0.5, 1, 0.8, 0.9, 1, 1, 0.8])
+                
+                cols[0].write(row['Order ID'])
+                cols[1].write(str(row['Order Date']))
+                cols[2].write(row['Buyer'])
+                cols[3].write(row['Produk'])
+                cols[4].write(row['Qty'])
+                cols[5].write(str(row['Due Date']))
+                
+                status_colors = {
+                    "Accepted": "🟢",
+                    "Pending": "🟡",
+                    "Rejected": "🔴"
+                }
+                cols[6].write(f"{status_colors.get(row['Status'], '')} {row['Status']}")
+                
+                cols[7].write(row['Progress'])
+                cols[8].write(row['Proses Saat Ini'])
+                
+                tracking_colors = {
+                    "Pending": ("⏳", "#6B7280"),
+                    "On Going": ("🔄", "#3B82F6"),
+                    "Done": ("✅", "#10B981")
+                }
+                track_icon, track_color = tracking_colors.get(row['Tracking Status'], ("⚪", "#6B7280"))
+                cols[9].markdown(f"<span style='color: {track_color};'>{track_icon} {row['Tracking Status']}</span>", unsafe_allow_html=True)
+                
+                with cols[10]:
+                    action_col1, action_col2 = st.columns(2)
+                    with action_col1:
+                        if st.button("✏️", key=f"edit_{idx}", help="Edit Order", use_container_width=True):
+                            st.session_state["edit_order_idx"] = idx
+                            st.session_state["menu"] = "Progress"
+                            st.rerun()
+                    
+                    with action_col2:
+                        if st.session_state["delete_confirm"].get(idx, False):
+                            if st.button("✅", key=f"confirm_del_{idx}", help="Confirm Delete", use_container_width=True):
+                                st.session_state["data_produksi"].drop(idx, inplace=True)
+                                st.session_state["data_produksi"].reset_index(drop=True, inplace=True)
+                                save_data(st.session_state["data_produksi"])
+                                st.session_state["delete_confirm"][idx] = False
+                                st.success(f"✅ Order {row['Order ID']} berhasil dihapus!")
+                                st.rerun()
+                        else:
+                            if st.button("🗑️", key=f"del_{idx}", help="Delete Order", use_container_width=True):
+                                st.session_state["delete_confirm"][idx] = True
+                                st.rerun()
+                
+                if st.session_state["delete_confirm"].get(idx, False):
+                    st.markdown(f"""
+                    <div style='background-color: #991B1B; padding: 10px; border-radius: 5px; margin: 5px 0;'>
+                        <span style='color: white; font-weight: bold;'>⚠️ Konfirmasi Hapus Order {row['Order ID']}?</span>
+                        <br>
+                        <span style='color: #FEE2E2; font-size: 0.9em;'>Klik tombol ✅ untuk konfirmasi atau refresh halaman untuk batal</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if st.button(f"❌ Batal Hapus", key=f"cancel_del_{idx}", type="secondary"):
+                        st.session_state["delete_confirm"][idx] = False
+                        st.rerun()
+                
+                st.markdown("<div style='margin: 8px 0; border-bottom: 1px solid #374151;'></div>", unsafe_allow_html=True)
+    else:
+        st.info("📝 Belum ada order yang diinput.")
 
 # ===== MENU: UPDATE PROGRESS =====
 elif st.session_state["menu"] == "Progress":
