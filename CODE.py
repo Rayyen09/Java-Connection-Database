@@ -1183,15 +1183,27 @@ elif st.session_state["menu"] == "Gantt":
                     group_tasks=True
                 )
                 
-                # Add vertical line for today's date
+                # Get today's date
                 today = datetime.date.today()
-                fig.add_vline(
+                
+                # Add shapes for today's line (using add_shape instead of add_vline)
+                fig.add_shape(
+                    type="line",
+                    x0=today,
+                    y0=0,
+                    x1=today,
+                    y1=len(df_filtered),
+                    line=dict(color="red", width=2, dash="dash")
+                )
+                
+                # Add annotation for today
+                fig.add_annotation(
                     x=today,
-                    line_width=2,
-                    line_dash="dash",
-                    line_color="red",
-                    annotation_text="Hari Ini",
-                    annotation_position="top"
+                    y=len(df_filtered),
+                    text="Hari Ini",
+                    showarrow=False,
+                    yshift=10,
+                    font=dict(color="red", size=12)
                 )
                 
                 # Add progress markers for each order
@@ -1199,38 +1211,39 @@ elif st.session_state["menu"] == "Gantt":
                     progress_pct = row['Progress_Num']
                     
                     if progress_pct > 0 and progress_pct < 100:
-                        # Calculate actual progress position (based on today's date, not percentage)
-                        # Progress marker placed at today's date to show current status
-                        task_name = f"{row['Order ID']} - {row['Produk'][:25]}"
+                        # Find task position in reversed list
                         task_idx = len(df_filtered) - 1 - list(df_filtered.index).index(idx)
                         
-                        # Add vertical line at today's position for this task
-                        fig.add_scatter(
-                            x=[today, today],
-                            y=[task_idx - 0.4, task_idx + 0.4],
-                            mode='lines+text',
-                            line=dict(color='#10B981', width=3),
-                            text=[f"{progress_pct:.0f}%", ""],
-                            textposition="top center",
-                            textfont=dict(color='#10B981', size=10, family='Arial Black'),
-                            showlegend=False,
-                            hoverinfo='skip'
+                        # Add progress line at today's position
+                        fig.add_shape(
+                            type="line",
+                            x0=today,
+                            y0=task_idx - 0.4,
+                            x1=today,
+                            y1=task_idx + 0.4,
+                            line=dict(color='#10B981', width=4)
+                        )
+                        
+                        # Add progress percentage text
+                        fig.add_annotation(
+                            x=today,
+                            y=task_idx + 0.5,
+                            text=f"{progress_pct:.0f}%",
+                            showarrow=False,
+                            font=dict(color='#10B981', size=11, family='Arial Black'),
+                            yshift=5
                         )
                     elif progress_pct == 100:
-                        # Mark completed orders
-                        task_name = f"{row['Order ID']} - {row['Produk'][:25]}"
+                        # Mark completed orders at due date
                         task_idx = len(df_filtered) - 1 - list(df_filtered.index).index(idx)
                         
-                        fig.add_scatter(
-                            x=[row['Due Date']],
-                            y=[task_idx],
-                            mode='markers+text',
-                            marker=dict(color='#10B981', size=12, symbol='circle'),
-                            text=["✓ 100%"],
-                            textposition="middle right",
-                            textfont=dict(color='#10B981', size=10, family='Arial Black'),
-                            showlegend=False,
-                            hoverinfo='skip'
+                        fig.add_annotation(
+                            x=row['Due Date'],
+                            y=task_idx,
+                            text="✓ 100%",
+                            showarrow=False,
+                            font=dict(color='#10B981', size=11, family='Arial Black'),
+                            xshift=35
                         )
                 
                 # Update layout
