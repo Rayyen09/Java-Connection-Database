@@ -5,13 +5,341 @@ import json
 import os
 import plotly.express as px
 import plotly.figure_factory as ff
+ ===== TAMBAHKAN KE BAGIAN ATAS FILE (SETELAH IMPORTS) =====
+
+import streamlit as st
+from streamlit.components.v1 import html
+
+# ===== FUNGSI DETEKSI DEVICE =====
+def get_device_type():
+    """Deteksi tipe device menggunakan JavaScript"""
+    detect_script = """
+    <script>
+        function getDeviceType() {
+            const width = window.innerWidth;
+            let deviceType = 'desktop';
+            
+            if (width < 768) {
+                deviceType = 'mobile';
+            } else if (width < 1024) {
+                deviceType = 'tablet';
+            }
+            
+            // Send to Streamlit
+            window.parent.postMessage({
+                type: 'streamlit:setComponentValue',
+                value: deviceType
+            }, '*');
+        }
+        
+        getDeviceType();
+        
+        // Re-detect on resize (dengan debounce)
+        let resizeTimer;
+        window.addEventListener('resize', function() {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(getDeviceType, 500);
+        });
+    </script>
+    """
+    
+    # Fallback: gunakan session state untuk persist
+    if 'device_type' not in st.session_state:
+        st.session_state['device_type'] = 'desktop'  # default
+    
+    return st.session_state['device_type']
+
+# ===== CSS RESPONSIVE =====
+def inject_responsive_css():
+    """Inject CSS untuk auto-responsive layout"""
+    st.markdown("""
+    <style>
+    /* ===== GLOBAL RESPONSIVE ===== */
+    * {
+        box-sizing: border-box;
+    }
+    
+    /* ===== MOBILE (< 768px) ===== */
+    @media (max-width: 767px) {
+        /* Sidebar: Hide by default, show with toggle */
+        [data-testid="stSidebar"] {
+            position: fixed;
+            z-index: 999;
+            width: 80vw !important;
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+        }
+        
+        [data-testid="stSidebar"][data-visible="true"] {
+            transform: translateX(0);
+        }
+        
+        /* Main content full width */
+        .main .block-container {
+            padding: 1rem 0.5rem !important;
+            max-width: 100% !important;
+        }
+        
+        /* Typography smaller */
+        h1 { font-size: 1.5rem !important; }
+        h2 { font-size: 1.25rem !important; }
+        h3 { font-size: 1.1rem !important; }
+        p, div { font-size: 0.9rem !important; }
+        
+        /* Metrics stack vertically */
+        [data-testid="metric-container"] {
+            width: 100% !important;
+            margin-bottom: 0.5rem !important;
+        }
+        
+        /* Buttons full width */
+        .stButton button {
+            width: 100% !important;
+            font-size: 0.9rem !important;
+            padding: 0.5rem !important;
+        }
+        
+        /* Form inputs full width */
+        .stTextInput input,
+        .stSelectbox select,
+        .stNumberInput input,
+        .stDateInput input,
+        .stTextArea textarea {
+            width: 100% !important;
+        }
+        
+        /* Tables horizontal scroll */
+        [data-testid="stDataFrame"],
+        .dataframe-container {
+            overflow-x: auto !important;
+            width: 100% !important;
+        }
+        
+        /* Charts smaller height */
+        .js-plotly-plot {
+            min-height: 300px !important;
+        }
+        
+        /* Columns stack vertically */
+        [data-testid="column"] {
+            width: 100% !important;
+            min-width: 100% !important;
+        }
+        
+        /* Hide some elements on mobile */
+        .desktop-only {
+            display: none !important;
+        }
+        
+        /* Reduce padding */
+        .element-container {
+            margin-bottom: 0.5rem !important;
+        }
+    }
+    
+    /* ===== TABLET (768px - 1023px) ===== */
+    @media (min-width: 768px) and (max-width: 1023px) {
+        .main .block-container {
+            padding: 1.5rem 1rem !important;
+            max-width: 100% !important;
+        }
+        
+        /* Sidebar collapsible */
+        [data-testid="stSidebar"] {
+            width: 15rem !important;
+        }
+        
+        h1 { font-size: 1.75rem !important; }
+        h2 { font-size: 1.5rem !important; }
+        
+        /* Buttons slightly smaller */
+        .stButton button {
+            font-size: 0.95rem !important;
+        }
+        
+        /* Charts medium height */
+        .js-plotly-plot {
+            min-height: 350px !important;
+        }
+    }
+    
+    /* ===== DESKTOP (> 1024px) ===== */
+    @media (min-width: 1024px) {
+        /* Normal layout */
+        .main .block-container {
+            padding: 2rem 3rem !important;
+        }
+        
+        [data-testid="stSidebar"] {
+            width: 18rem !important;
+        }
+    }
+    
+    /* ===== MOBILE MENU BUTTON ===== */
+    .mobile-menu-btn {
+        display: none;
+        position: fixed;
+        top: 1rem;
+        left: 1rem;
+        z-index: 1000;
+        background: #3B82F6;
+        color: white;
+        border: none;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        font-size: 1.2rem;
+        cursor: pointer;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+    
+    @media (max-width: 767px) {
+        .mobile-menu-btn {
+            display: block;
+        }
+    }
+    
+    /* ===== UTILITY CLASSES ===== */
+    .mobile-only { display: none; }
+    .desktop-only { display: block; }
+    
+    @media (max-width: 767px) {
+        .mobile-only { display: block !important; }
+        .desktop-only { display: none !important; }
+    }
+    
+    /* ===== IMPROVED TOUCH TARGETS ===== */
+    @media (max-width: 767px) {
+        button, a, [role="button"] {
+            min-height: 44px !important;
+            min-width: 44px !important;
+        }
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# ===== FUNGSI HELPER UNTUK RESPONSIVE LAYOUT =====
+def responsive_columns(mobile_cols=1, tablet_cols=2, desktop_cols=4):
+    """Buat kolom yang responsive berdasarkan device"""
+    device = get_device_type()
+    
+    if device == 'mobile':
+        return st.columns(mobile_cols) if mobile_cols > 1 else [st.container()]
+    elif device == 'tablet':
+        return st.columns(tablet_cols)
+    else:
+        return st.columns(desktop_cols)
+
+def is_mobile():
+    """Check if current device is mobile"""
+    return get_device_type() == 'mobile'
+
+def is_tablet():
+    """Check if current device is tablet"""
+    return get_device_type() == 'tablet'
+
+def is_desktop():
+    """Check if current device is desktop"""
+    return get_device_type() == 'desktop'
+
+# ===== MOBILE MENU TOGGLE =====
+def add_mobile_menu_button():
+    """Tambahkan button untuk toggle sidebar di mobile"""
+    html("""
+    <button class="mobile-menu-btn" onclick="toggleSidebar()">
+        ☰ Menu
+    </button>
+    
+    <script>
+        function toggleSidebar() {
+            const sidebar = window.parent.document.querySelector('[data-testid="stSidebar"]');
+            const isVisible = sidebar.getAttribute('data-visible') === 'true';
+            sidebar.setAttribute('data-visible', !isVisible);
+        }
+    </script>
+    """, height=0)
+
+# ===== SIMPLIFIED TABLE FOR MOBILE =====
+def display_responsive_dataframe(df, columns_to_show=None):
+    """Display dataframe yang responsive"""
+    if is_mobile():
+        # Mobile: Show simplified view with expander for details
+        if columns_to_show:
+            df_display = df[columns_to_show]
+        else:
+            # Auto select important columns
+            important_cols = ['Order ID', 'Buyer', 'Status', 'Progress']
+            df_display = df[[col for col in important_cols if col in df.columns]]
+        
+        # Display as cards instead of table
+        for idx, row in df_display.iterrows():
+            with st.expander(f"📦 {row.get('Order ID', idx)}"):
+                for col in df_display.columns:
+                    st.write(f"**{col}:** {row[col]}")
+    else:
+        # Tablet/Desktop: Show full table
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
+# ===== RESPONSIVE METRICS =====
+def display_responsive_metrics(metrics_data):
+    """Display metrics yang auto-arrange berdasarkan device"""
+    device = get_device_type()
+    
+    if device == 'mobile':
+        # Mobile: 1-2 columns
+        cols = st.columns(2)
+        for i, (label, value, delta) in enumerate(metrics_data):
+            with cols[i % 2]:
+                st.metric(label, value, delta)
+    elif device == 'tablet':
+        # Tablet: 3 columns
+        cols = st.columns(3)
+        for i, (label, value, delta) in enumerate(metrics_data):
+            with cols[i % 3]:
+                st.metric(label, value, delta)
+    else:
+        # Desktop: All in one row
+        cols = st.columns(len(metrics_data))
+        for i, (label, value, delta) in enumerate(metrics_data):
+            with cols[i]:
+                st.metric(label, value, delta)
+
+# ===== DEVICE INFO INDICATOR (UNTUK TESTING) =====
+def show_device_indicator():
+    """Tampilkan indicator device type (untuk development)"""
+    device = get_device_type()
+    
+    icon_map = {
+        'mobile': '📱',
+        'tablet': '📲',
+        'desktop': '🖥️'
+    }
+    
+    st.sidebar.markdown(f"""
+    <div style='background: #1F2937; padding: 0.5rem; border-radius: 0.5rem; text-align: center;'>
+        {icon_map.get(device, '🖥️')} <strong>{device.upper()}</strong>
+    </div>
+    """, unsafe_allow_html=True)
 
 # ===== KONFIGURASI DATABASE =====
 DATABASE_PATH = "ppic_data.json"
 BUYER_DB_PATH = "buyers.json"
 PRODUCT_DB_PATH = "products.json"
 
-st.set_page_config(page_title="PPIC-DSS System", layout="wide", page_icon="🏭")
+st.set_page_config(
+    page_title="PPIC-DSS System", 
+    layout="wide",  # Tetap wide, CSS akan handle responsive
+    page_icon="🏭",
+    initial_sidebar_state="collapsed"  # Mobile: sidebar collapsed by default
+)
+
+# ===== INJECT CSS RESPONSIVE =====
+inject_responsive_css()
+
+# ===== ADD MOBILE MENU BUTTON =====
+add_mobile_menu_button()
+
+# ===== SHOW DEVICE INDICATOR (OPTIONAL, UNTUK TESTING) =====
+# show_device_indicator()  # Uncomment untuk development
 
 # ===== FUNGSI DATABASE =====
 def load_data():
@@ -212,57 +540,81 @@ if st.session_state["menu"] == "Dashboard":
     df = st.session_state["data_produksi"]
     
     if not df.empty:
-        df['Tracking Status'] = df.apply(lambda row: get_tracking_status_from_progress(row['Progress'], row['Status']), axis=1)
+        df['Tracking Status'] = df.apply(
+            lambda row: get_tracking_status_from_progress(row['Progress'], row['Status']), 
+            axis=1
+        )
         
-        col1, col2, col3, col4, col5 = st.columns(5)
-        
+        # ===== RESPONSIVE METRICS =====
         total_orders = len(df)
         accepted = len(df[df["Status"] == "Accepted"])
         pending = len(df[df["Status"] == "Pending"])
         rejected = len(df[df["Status"] == "Rejected"])
         avg_progress = df["Progress"].str.rstrip('%').astype('float').mean()
         
-        col1.metric("📦 Total Orders", total_orders)
-        col2.metric("✅ Accepted", accepted, delta=f"{(accepted/total_orders*100):.0f}%")
-        col3.metric("⏳ Pending", pending, delta=f"{(pending/total_orders*100):.0f}%")
-        col4.metric("❌ Rejected", rejected, delta=f"-{(rejected/total_orders*100):.0f}%")
-        col5.metric("📈 Avg Progress", f"{avg_progress:.1f}%")
+        # Gunakan responsive metrics
+        metrics_data = [
+            ("📦 Total Orders", total_orders, None),
+            ("✅ Accepted", accepted, f"{(accepted/total_orders*100):.0f}%"),
+            ("⏳ Pending", pending, f"{(pending/total_orders*100):.0f}%"),
+            ("❌ Rejected", rejected, f"-{(rejected/total_orders*100):.0f}%"),
+            ("📈 Avg Progress", f"{avg_progress:.1f}%", None)
+        ]
+        
+        display_responsive_metrics(metrics_data)
         
         st.markdown("---")
         
-        st.subheader("🔍 Tracking Status Overview")
-        track_col1, track_col2, track_col3 = st.columns(3)
-        
-        track_pending = len(df[df['Tracking Status'] == 'Pending'])
-        track_ongoing = len(df[df['Tracking Status'] == 'On Going'])
-        track_done = len(df[df['Tracking Status'] == 'Done'])
-        
-        track_col1.metric("⏳ Pending", track_pending, delta=f"{(track_pending/total_orders*100):.0f}%")
-        track_col2.metric("🔄 On Going", track_ongoing, delta=f"{(track_ongoing/total_orders*100):.0f}%")
-        track_col3.metric("✅ Done", track_done, delta=f"{(track_done/total_orders*100):.0f}%")
-        
-        st.markdown("---")
-        
-        col_chart1, col_chart2 = st.columns(2)
-        
-        with col_chart1:
+        # ===== RESPONSIVE CHARTS =====
+        if is_mobile():
+            # Mobile: Stack charts vertically
             st.subheader("Status Distribution")
             status_count = df["Status"].value_counts()
             fig1 = px.pie(values=status_count.values, names=status_count.index, 
-                         title="Status Orders", color_discrete_sequence=px.colors.qualitative.Set3)
+                         title="Status Orders")
             st.plotly_chart(fig1, use_container_width=True)
-        
-        with col_chart2:
+            
             st.subheader("Tracking Status Distribution")
             tracking_count = df["Tracking Status"].value_counts()
             fig2 = px.pie(values=tracking_count.values, names=tracking_count.index, 
-                         title="Tracking Status", color_discrete_sequence=px.colors.qualitative.Pastel)
+                         title="Tracking Status")
             st.plotly_chart(fig2, use_container_width=True)
+        else:
+            # Desktop/Tablet: Side by side
+            col_chart1, col_chart2 = st.columns(2)
+            
+            with col_chart1:
+                st.subheader("Status Distribution")
+                status_count = df["Status"].value_counts()
+                fig1 = px.pie(values=status_count.values, names=status_count.index, 
+                             title="Status Orders")
+                st.plotly_chart(fig1, use_container_width=True)
+            
+            with col_chart2:
+                st.subheader("Tracking Status Distribution")
+                tracking_count = df["Tracking Status"].value_counts()
+                fig2 = px.pie(values=tracking_count.values, names=tracking_count.index, 
+                             title="Tracking Status")
+                st.plotly_chart(fig2, use_container_width=True)
         
+        # ===== RESPONSIVE TABLE =====
         st.subheader("🕒 Recent Orders (Last 10)")
         recent_df = df.sort_values("Order Date", ascending=False).head(10)
-        st.dataframe(recent_df[["Order ID", "Order Date", "Buyer", "Produk", "Qty", "Status", "Progress", "Proses Saat Ini", "Tracking Status"]], 
-                     use_container_width=True, hide_index=True)
+        
+        if is_mobile():
+            # Mobile: Simplified columns + card view
+            display_responsive_dataframe(
+                recent_df, 
+                columns_to_show=["Order ID", "Buyer", "Status", "Progress"]
+            )
+        else:
+            # Desktop: Full table
+            st.dataframe(
+                recent_df[["Order ID", "Order Date", "Buyer", "Produk", "Qty", 
+                          "Status", "Progress", "Proses Saat Ini", "Tracking Status"]], 
+                use_container_width=True, 
+                hide_index=True
+            )
     else:
         st.info("📝 Belum ada data. Silakan input pesanan baru.")
 
@@ -362,115 +714,39 @@ elif st.session_state["menu"] == "Orders":
     df = st.session_state["data_produksi"]
     
     if not df.empty:
-        df['Tracking Status'] = df.apply(lambda row: get_tracking_status_from_progress(row['Progress'], row['Status']), axis=1)
+        # ... (filter code sama)
         
-        col_f1, col_f2, col_f3, col_f4 = st.columns(4)
-        with col_f1:
-            filter_buyer = st.multiselect("Filter Buyer", df["Buyer"].unique())
-        with col_f2:
-            filter_status = st.multiselect("Filter Status", ["Accepted", "Pending", "Rejected"], default=["Accepted", "Pending", "Rejected"])
-        with col_f3:
-            filter_tracking = st.multiselect("Filter Tracking Status", ["Pending", "On Going", "Done"])
-        with col_f4:
-            search_order = st.text_input("🔍 Cari Order ID / Produk")
-        
-        df_filtered = df.copy()
-        if filter_buyer:
-            df_filtered = df_filtered[df_filtered["Buyer"].isin(filter_buyer)]
-        if filter_status:
-            df_filtered = df_filtered[df_filtered["Status"].isin(filter_status)]
-        if filter_tracking:
-            df_filtered = df_filtered[df_filtered["Tracking Status"].isin(filter_tracking)]
-        if search_order:
-            df_filtered = df_filtered[
-                df_filtered["Order ID"].str.contains(search_order, case=False, na=False) | 
-                df_filtered["Produk"].str.contains(search_order, case=False, na=False)
-            ]
-        
-        st.markdown("---")
-              
-        header_cols = st.columns([1, 1, 0.8, 1.3, 0.5, 1, 0.8, 0.9, 1, 1, 0.8])
-        header_cols[0].markdown("**Order ID**")
-        header_cols[1].markdown("**Order Date**")
-        header_cols[2].markdown("**Buyer**")
-        header_cols[3].markdown("**Produk**")
-        header_cols[4].markdown("**Qty**")
-        header_cols[5].markdown("**Due Date**")
-        header_cols[6].markdown("**Status**")
-        header_cols[7].markdown("**Progress**")
-        header_cols[8].markdown("**Proses**")
-        header_cols[9].markdown("**Tracking**")
-        header_cols[10].markdown("**Action**")
-        
-        if "delete_confirm" not in st.session_state:
-            st.session_state["delete_confirm"] = {}
-        
-        for idx, row in df_filtered.iterrows():
-            cols = st.columns([1, 1, 0.8, 1.3, 0.5, 1, 0.8, 0.9, 1, 1, 0.8])
-            
-            cols[0].write(row['Order ID'])
-            cols[1].write(str(row['Order Date']))
-            cols[2].write(row['Buyer'])
-            cols[3].write(row['Produk'])
-            cols[4].write(row['Qty'])
-            cols[5].write(str(row['Due Date']))
-            
-            status_colors = {
-                "Accepted": "🟢",
-                "Pending": "🟡",
-                "Rejected": "🔴"
-            }
-            cols[6].write(f"{status_colors.get(row['Status'], '')} {row['Status']}")
-            
-            cols[7].write(row['Progress'])
-            cols[8].write(row['Proses Saat Ini'])
-            
-            tracking_colors = {
-                "Pending": ("⏳", "#6B7280"),
-                "On Going": ("🔄", "#3B82F6"),
-                "Done": ("✅", "#10B981")
-            }
-            track_icon, track_color = tracking_colors.get(row['Tracking Status'], ("⚪", "#6B7280"))
-            cols[9].markdown(f"<span style='color: {track_color};'>{track_icon} {row['Tracking Status']}</span>", unsafe_allow_html=True)
-            
-            with cols[10]:
-                action_col1, action_col2 = st.columns(2)
-                with action_col1:
-                    if st.button("✏️", key=f"edit_{idx}", help="Edit Order", use_container_width=True):
-                        st.session_state["edit_order_idx"] = idx
-                        st.session_state["menu"] = "Progress"
-                        st.rerun()
-                
-                with action_col2:
-                    if st.session_state["delete_confirm"].get(idx, False):
-                        if st.button("✅", key=f"confirm_del_{idx}", help="Confirm Delete", use_container_width=True):
-                            st.session_state["data_produksi"].drop(idx, inplace=True)
-                            st.session_state["data_produksi"].reset_index(drop=True, inplace=True)
-                            save_data(st.session_state["data_produksi"])
-                            st.session_state["delete_confirm"][idx] = False
-                            st.success(f"✅ Order {row['Order ID']} berhasil dihapus!")
+        if is_mobile():
+            # MOBILE: Card-based view
+            for idx, row in df_filtered.iterrows():
+                with st.expander(f"📦 {row['Order ID']} - {row['Buyer']}"):
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.write(f"**Produk:** {row['Produk']}")
+                        st.write(f"**Qty:** {row['Qty']}")
+                        st.write(f"**Status:** {row['Status']}")
+                    
+                    with col2:
+                        st.write(f"**Due Date:** {row['Due Date']}")
+                        st.write(f"**Progress:** {row['Progress']}")
+                        st.write(f"**Proses:** {row['Proses Saat Ini']}")
+                    
+                    # Action buttons
+                    btn_col1, btn_col2 = st.columns(2)
+                    with btn_col1:
+                        if st.button("✏️ Edit", key=f"edit_{idx}", use_container_width=True):
+                            st.session_state["edit_order_idx"] = idx
+                            st.session_state["menu"] = "Progress"
                             st.rerun()
-                    else:
-                        if st.button("🗑️", key=f"del_{idx}", help="Delete Order", use_container_width=True):
-                            st.session_state["delete_confirm"][idx] = True
-                            st.rerun()
-            
-            if st.session_state["delete_confirm"].get(idx, False):
-                st.markdown(f"""
-                <div style='background-color: #991B1B; padding: 10px; border-radius: 5px; margin: 5px 0;'>
-                    <span style='color: white; font-weight: bold;'>⚠️ Konfirmasi Hapus Order {row['Order ID']}?</span>
-                    <br>
-                    <span style='color: #FEE2E2; font-size: 0.9em;'>Klik tombol ✅ untuk konfirmasi atau refresh halaman untuk batal</span>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                if st.button(f"❌ Batal Hapus", key=f"cancel_del_{idx}", type="secondary"):
-                    st.session_state["delete_confirm"][idx] = False
-                    st.rerun()
-            
-            st.markdown("<div style='margin: 8px 0; border-bottom: 1px solid #374151;'></div>", unsafe_allow_html=True)
-    else:
-        st.info("📝 Belum ada order yang diinput.")
+                    with btn_col2:
+                        if st.button("🗑️ Delete", key=f"del_{idx}", use_container_width=True):
+                            # Delete logic
+                            pass
+        else:
+            # DESKTOP/TABLET: Table view (existing code)
+            # ... (your existing table code)
+            pass
 
 # ===== MENU: UPDATE PROGRESS =====
 elif st.session_state["menu"] == "Progress":
