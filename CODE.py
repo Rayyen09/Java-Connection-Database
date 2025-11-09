@@ -1120,13 +1120,52 @@ elif st.session_state["menu"] == "Gantt":
     
     if not df.empty:
         # Filter options
-        col_filter1, col_filter2, col_filter3 = st.columns(3)
+        col_filter1, col_filter2, col_filter3, col_filter4 = st.columns(4)
         with col_filter1:
             filter_buyers = st.multiselect("Filter Buyer", df["Buyer"].unique(), default=df["Buyer"].unique())
         with col_filter2:
             filter_statuses = st.multiselect("Filter Status", ["Accepted", "Pending", "Rejected"], default=["Accepted", "Pending"])
         with col_filter3:
             show_progress = st.checkbox("Tampilkan Progress Detail", value=True)
+        with col_filter4:
+            # Date range selector for timeline
+            all_dates = pd.concat([pd.to_datetime(df["Order Date"]), pd.to_datetime(df["Due Date"])])
+            min_date = all_dates.min().date()
+            max_date = all_dates.max().date()
+            
+            date_range = st.selectbox(
+                "Timeline Range",
+                ["All Time", "This Month", "Next Month", "Custom"],
+                index=0
+            )
+        
+        # Apply date range filter
+        today = datetime.date.today()
+        if date_range == "This Month":
+            start_date = today.replace(day=1)
+            if today.month == 12:
+                end_date = today.replace(year=today.year + 1, month=1, day=1) - datetime.timedelta(days=1)
+            else:
+                end_date = today.replace(month=today.month + 1, day=1) - datetime.timedelta(days=1)
+        elif date_range == "Next Month":
+            if today.month == 12:
+                start_date = today.replace(year=today.year + 1, month=1, day=1)
+                end_date = today.replace(year=today.year + 1, month=2, day=1) - datetime.timedelta(days=1)
+            else:
+                start_date = today.replace(month=today.month + 1, day=1)
+                if today.month == 11:
+                    end_date = today.replace(year=today.year + 1, month=1, day=1) - datetime.timedelta(days=1)
+                else:
+                    end_date = today.replace(month=today.month + 2, day=1) - datetime.timedelta(days=1)
+        elif date_range == "Custom":
+            col_date1, col_date2 = st.columns(2)
+            with col_date1:
+                start_date = st.date_input("Start Date", value=min_date, min_value=min_date, max_value=max_date)
+            with col_date2:
+                end_date = st.date_input("End Date", value=max_date, min_value=min_date, max_value=max_date)
+        else:  # All Time
+            start_date = min_date
+            end_date = max_date
         
         # Apply filters
         df_filtered = df[df["Buyer"].isin(filter_buyers) & df["Status"].isin(filter_statuses)].copy()
@@ -1138,113 +1177,244 @@ elif st.session_state["menu"] == "Gantt":
             df_filtered['Due Date'] = pd.to_datetime(df_filtered['Due Date'])
             df_filtered['Duration'] = (df_filtered['Due Date'] - df_filtered['Order Date']).dt.days
             
-            # Prepare data for Gantt chart
-            gantt_data = []
+            # Filter by date range
+            df_filtered = df_filtered[
+                (df_filtered['Order Date'].dt.date <= end_date) & 
+                (df_filtered['Due Date'].dt.date >= start_date)
+            ]
             
-            for idx, row in df_filtered.iterrows():
-                task_name = f"{row['Order ID']} - {row['Produk'][:25]}"
-                progress_pct = row['Progress_Num']
+            if not df_filtered.empty:
+                # Prepare data for Gantt chart - USE SINGLE COLOR
+                gantt_data = []
                 
-                # Bar utama (total duration)
-                gantt_data.append(dict(
-                    Task=task_name,
-                    Start=row['Order Date'].strftime('%Y-%m-%d'),
-                    Finish=row['Due Date'].strftime('%Y-%m-%d'),
-                    Resource=row['Buyer'],
-                    Description=f"Status: {row['Status']} | Progress: {progress_pct:.0f}% | {row['Proses Saat Ini']}"
-                ))
-            
-            # Create Gantt chart
-            if gantt_data:
-                # Define colors by buyer
-                buyer_colors = {
-                    'Belhome': '#3B82F6',
-                    'Indoteak': '#8B5CF6',
-                    'WMG': '#F59E0B',
-                    'SDM': '#EF4444',
-                    'Remar': '#EC4899',
-                    'ITM': '#14B8A6',
-                    'San Marco': '#6366F1'
-                }
-                
-                colors = []
-                for buyer in df_filtered['Buyer'].unique():
-                    colors.append(buyer_colors.get(buyer, '#10B981'))
-                
-                fig = ff.create_gantt(
-                    gantt_data,
-                    colors=colors,
-                    index_col='Resource',
-                    show_colorbar=False,
-                    showgrid_x=True,
-                    showgrid_y=True,
-                    title='Production Schedule with Progress Tracking',
-                    bar_width=0.5,
-                    group_tasks=True
-                )
-                
-                # Get today's date
-                today = datetime.date.today()
-                
-                # Add shapes for today's line (using add_shape instead of add_vline)
-                fig.add_shape(
-                    type="line",
-                    x0=today,
-                    y0=0,
-                    x1=today,
-                    y1=len(df_filtered),
-                    line=dict(color="red", width=2, dash="dash")
-                )
-                
-                # Add annotation for today
-                fig.add_annotation(
-                    x=today,
-                    y=len(df_filtered),
-                    text="Hari Ini",
-                    showarrow=False,
-                    yshift=10,
-                    font=dict(color="red", size=12)
-                )
-                
-                # Add progress markers for each order
                 for idx, row in df_filtered.iterrows():
+                    task_name = f"{row['Order ID']} - {row['Produk'][:30]}"
                     progress_pct = row['Progress_Num']
                     
-                    if progress_pct > 0 and progress_pct < 100:
-                        # Find task position in reversed list
-                        task_idx = len(df_filtered) - 1 - list(df_filtered.index).index(idx)
+                    gantt_data.append(dict(
+                        Task=task_name,
+                        Start=row['Order Date'].strftime('%Y-%m-%d'),
+                        Finish=row['Due Date'].strftime('%Y-%m-%d'),
+                        Resource="Order",  # Single group
+                        Description=f"{row['Buyer']} | Status: {row['Status']} | Progress: {progress_pct:.0f}% | {row['Proses Saat Ini']}"
+                    ))
+                
+                # Create Gantt chart with SINGLE COLOR
+                if gantt_data:
+                    fig = ff.create_gantt(
+                        gantt_data,
+                        colors=['#3B82F6'],  # Single blue color
+                        index_col='Resource',
+                        show_colorbar=False,
+                        showgrid_x=True,
+                        showgrid_y=True,
+                        title='Production Schedule with Progress Tracking',
+                        bar_width=0.4,
+                        group_tasks=True
+                    )
+                    
+                    # Get today's date
+                    today_date = datetime.date.today()
+                    
+                    # Add shapes for today's line
+                    fig.add_shape(
+                        type="line",
+                        x0=today_date,
+                        y0=-0.5,
+                        x1=today_date,
+                        y1=len(df_filtered) - 0.5,
+                        line=dict(color="#EF4444", width=2, dash="dash")
+                    )
+                    
+                    # Add annotation for today
+                    fig.add_annotation(
+                        x=today_date,
+                        y=len(df_filtered) - 0.5,
+                        text="TODAY",
+                        showarrow=False,
+                        yshift=15,
+                        font=dict(color="#EF4444", size=11, family='Arial Black'),
+                        bgcolor="rgba(239, 68, 68, 0.1)",
+                        borderpad=4
+                    )
+                    
+                    # Add progress markers for each order
+                    for i, (idx, row) in enumerate(df_filtered.iterrows()):
+                        progress_pct = row['Progress_Num']
+                        task_idx = len(df_filtered) - 1 - i
                         
-                        # Add progress line at today's position
-                        fig.add_shape(
-                            type="line",
-                            x0=today,
-                            y0=task_idx - 0.4,
-                            x1=today,
-                            y1=task_idx + 0.4,
-                            line=dict(color='#10B981', width=4)
+                        if progress_pct > 0 and progress_pct < 100:
+                            # Add progress line at today's position
+                            fig.add_shape(
+                                type="line",
+                                x0=today_date,
+                                y0=task_idx - 0.35,
+                                x1=today_date,
+                                y1=task_idx + 0.35,
+                                line=dict(color='#10B981', width=5)
+                            )
+                            
+                            # Add progress percentage text
+                            fig.add_annotation(
+                                x=today_date,
+                                y=task_idx,
+                                text=f"<b>{progress_pct:.0f}%</b>",
+                                showarrow=False,
+                                font=dict(color='#FFFFFF', size=10, family='Arial Black'),
+                                bgcolor="#10B981",
+                                borderpad=3,
+                                xshift=25
+                            )
+                        elif progress_pct == 100:
+                            # Mark completed orders
+                            fig.add_annotation(
+                                x=row['Due Date'],
+                                y=task_idx,
+                                text="<b>✓ DONE</b>",
+                                showarrow=False,
+                                font=dict(color='#FFFFFF', size=10, family='Arial Black'),
+                                bgcolor="#10B981",
+                                borderpad=3,
+                                xshift=40
+                            )
+                    
+                    # Update layout with better styling
+                    fig.update_layout(
+                        height=max(450, len(df_filtered) * 70),
+                        xaxis_title="<b>Timeline</b>",
+                        yaxis_title="<b>Orders</b>",
+                        hovermode='closest',
+                        font=dict(size=11, color='#E5E7EB'),
+                        plot_bgcolor='#1F2937',
+                        paper_bgcolor='#111827',
+                        xaxis=dict(
+                            gridcolor='#374151',
+                            showgrid=True,
+                            range=[start_date, end_date],  # Set date range
+                            fixedrange=False  # Allow zoom and pan
+                        ),
+                        yaxis=dict(
+                            gridcolor='#374151',
+                            showgrid=False,
+                            fixedrange=False
+                        ),
+                        title=dict(
+                            text='<b>Production Schedule with Progress Tracking</b>',
+                            font=dict(size=16, color='#F9FAFB')
+                        ),
+                        margin=dict(l=200, r=100, t=80, b=80)
+                    )
+                    
+                    # Add rangeslider for easy navigation
+                    fig.update_xaxes(
+                        rangeslider_visible=True,
+                        rangeselector=dict(
+                            buttons=list([
+                                dict(count=7, label="1w", step="day", stepmode="backward"),
+                                dict(count=1, label="1m", step="month", stepmode="backward"),
+                                dict(count=3, label="3m", step="month", stepmode="backward"),
+                                dict(step="all", label="All")
+                            ]),
+                            bgcolor="#374151",
+                            activecolor="#3B82F6",
+                            font=dict(color="#E5E7EB")
                         )
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Legend explanation
+                    st.markdown("---")
+                    col_legend1, col_legend2, col_legend3 = st.columns(3)
+                    with col_legend1:
+                        st.markdown("**📊 Panduan:**")
+                        st.markdown("🔵 **Bar Biru** = Durasi total order")
+                        st.markdown("🟢 **Badge Hijau** = Progress saat ini")
+                        st.markdown("🔴 **Garis Merah** = Hari ini")
+                    with col_legend2:
+                        st.markdown("**🎮 Interaksi:**")
+                        st.markdown("🖱️ **Drag** = Geser timeline")
+                        st.markdown("🔍 **Scroll** = Zoom in/out")
+                        st.markdown("📅 **Slider** = Navigasi cepat")
+                    with col_legend3:
+                        st.markdown("**ℹ️ Info:**")
+                        st.markdown(f"📦 Total Orders: **{len(df_filtered)}**")
+                        st.markdown(f"📅 Range: **{start_date}** to **{end_date}**")
+                    
+                    # Summary table with progress
+                    st.markdown("---")
+                    st.subheader("📋 Order Timeline Summary")
+                    
+                    if show_progress:
+                        summary_df = df_filtered[["Order ID", "Buyer", "Produk", "Order Date", "Due Date", 
+                                                 "Progress", "Proses Saat Ini", "Status"]].copy()
+                        summary_df["Order Date"] = summary_df["Order Date"].dt.strftime('%Y-%m-%d')
+                        summary_df["Due Date"] = summary_df["Due Date"].dt.strftime('%Y-%m-%d')
+                        summary_df["Duration (days)"] = df_filtered["Duration"].values
                         
-                        # Add progress percentage text
-                        fig.add_annotation(
-                            x=today,
-                            y=task_idx + 0.5,
-                            text=f"{progress_pct:.0f}%",
-                            showarrow=False,
-                            font=dict(color='#10B981', size=11, family='Arial Black'),
-                            yshift=5
-                        )
-                    elif progress_pct == 100:
-                        # Mark completed orders at due date
-                        task_idx = len(df_filtered) - 1 - list(df_filtered.index).index(idx)
+                        # Calculate days from start and days to deadline
+                        summary_df["Days from Start"] = (today_date - df_filtered["Order Date"].dt.date).apply(lambda x: x.days)
+                        summary_df["Days to Deadline"] = (df_filtered["Due Date"].dt.date - today_date).apply(lambda x: x.days)
+                    else:
+                        summary_df = df_filtered[["Order ID", "Buyer", "Produk", "Order Date", "Due Date", "Status", "Progress"]].copy()
+                        summary_df["Order Date"] = summary_df["Order Date"].dt.strftime('%Y-%m-%d')
+                        summary_df["Due Date"] = summary_df["Due Date"].dt.strftime('%Y-%m-%d')
+                        summary_df["Duration (days)"] = df_filtered["Duration"].values
+                    
+                    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+                    
+                    # Progress Analysis
+                    st.markdown("---")
+                    st.subheader("📈 Progress Analysis")
+                    
+                    analysis_col1, analysis_col2 = st.columns(2)
+                    
+                    with analysis_col1:
+                        st.markdown("**⚠️ Orders Needing Attention**")
+                        attention_count = 0
+                        for idx, row in df_filtered.iterrows():
+                            days_from_start = (today_date - row['Order Date'].date()).days
+                            days_to_deadline = (row['Due Date'].date() - today_date).days
+                            expected_progress = min(100, (days_from_start / row['Duration'] * 100)) if row['Duration'] > 0 else 0
+                            actual_progress = row['Progress_Num']
+                            
+                            if actual_progress < expected_progress - 15 and days_to_deadline > 0:
+                                st.warning(f"🔔 **{row['Order ID']}** ({row['Buyer']}) - Progress: {actual_progress:.0f}% (Expected: {expected_progress:.0f}%)")
+                                attention_count += 1
                         
-                        fig.add_annotation(
-                            x=row['Due Date'],
-                            y=task_idx,
-                            text="✓ 100%",
-                            showarrow=False,
-                            font=dict(color='#10B981', size=11, family='Arial Black'),
-                            xshift=35
-                        )
+                        if attention_count == 0:
+                            st.success("✅ Semua order berjalan sesuai rencana!")
+                    
+                    with analysis_col2:
+                        st.markdown("**✅ Performance Summary**")
+                        on_track_count = 0
+                        ahead_count = 0
+                        behind_count = 0
+                        
+                        for idx, row in df_filtered.iterrows():
+                            days_from_start = (today_date - row['Order Date'].date()).days
+                            expected_progress = min(100, (days_from_start / row['Duration'] * 100)) if row['Duration'] > 0 else 0
+                            actual_progress = row['Progress_Num']
+                            
+                            if actual_progress >= expected_progress + 10:
+                                ahead_count += 1
+                            elif actual_progress >= expected_progress - 10:
+                                on_track_count += 1
+                            else:
+                                behind_count += 1
+                        
+                        st.metric("🚀 Ahead of Schedule", ahead_count)
+                        st.metric("✅ On Track", on_track_count)
+                        st.metric("⚠️ Behind Schedule", behind_count)
+                        
+                else:
+                    st.warning("Tidak ada data untuk ditampilkan dalam Gantt Chart")
+            else:
+                st.warning("Tidak ada data dalam rentang tanggal yang dipilih")
+        else:
+            st.warning("Tidak ada data sesuai filter yang dipilih")
+    else:
+        st.info("📝 Belum ada data untuk membuat Gantt Chart.")
                 
                 # Update layout
                 fig.update_layout(
