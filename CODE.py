@@ -1290,8 +1290,8 @@ elif st.session_state["menu"] == "Gantt":
                         xaxis=dict(
                             gridcolor='#374151',
                             showgrid=True,
-                            range=[start_date, end_date],  # Set date range
-                            fixedrange=False  # Allow zoom and pan
+                            range=[start_date, end_date],
+                            fixedrange=False
                         ),
                         yaxis=dict(
                             gridcolor='#374151',
@@ -1406,7 +1406,6 @@ elif st.session_state["menu"] == "Gantt":
                         st.metric("🚀 Ahead of Schedule", ahead_count)
                         st.metric("✅ On Track", on_track_count)
                         st.metric("⚠️ Behind Schedule", behind_count)
-                        
                 else:
                     st.warning("Tidak ada data untuk ditampilkan dalam Gantt Chart")
             else:
@@ -1415,97 +1414,7 @@ elif st.session_state["menu"] == "Gantt":
             st.warning("Tidak ada data sesuai filter yang dipilih")
     else:
         st.info("📝 Belum ada data untuk membuat Gantt Chart.")
-                
-                # Update layout
-                fig.update_layout(
-                    height=max(400, len(df_filtered) * 60),
-                    xaxis_title="Timeline",
-                    yaxis_title="Orders",
-                    hovermode='closest',
-                    font=dict(size=10),
-                    plot_bgcolor='#1F2937',
-                    paper_bgcolor='#111827',
-                    xaxis=dict(gridcolor='#374151'),
-                    yaxis=dict(gridcolor='#374151')
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # Legend explanation
-                st.markdown("---")
-                col_legend1, col_legend2, col_legend3 = st.columns(3)
-                with col_legend1:
-                    st.markdown("**📊 Legend:**")
-                    st.markdown("📊 **Bar Horizontal** = Total durasi order")
-                    st.markdown("🟢 **Garis Vertikal** = Progress saat ini")
-                    st.markdown("🔴 **Garis Putus-putus** = Hari ini")
-                with col_legend2:
-                    st.markdown("**🎨 Color Code:**")
-                    st.markdown("🟦 Belhome | 🟪 Indoteak | 🟧 WMG")
-                    st.markdown("🔴 SDM | 🟣 Remar | 🟢 ITM | 🔵 San Marco")
-                with col_legend3:
-                    st.markdown("**ℹ️ Info:**")
-                    st.markdown(f"📦 Total Orders: {len(df_filtered)}")
-                    st.markdown(f"📅 Today: {today.strftime('%Y-%m-%d')}")
-                
-                # Summary table with progress
-                st.markdown("---")
-                st.subheader("📋 Order Timeline Summary")
-                
-                if show_progress:
-                    summary_df = df_filtered[["Order ID", "Produk", "Buyer", "Order Date", "Due Date", 
-                                             "Progress", "Proses Saat Ini", "Status"]].copy()
-                    summary_df["Order Date"] = summary_df["Order Date"].dt.strftime('%Y-%m-%d')
-                    summary_df["Due Date"] = summary_df["Due Date"].dt.strftime('%Y-%m-%d')
-                    summary_df["Duration (days)"] = df_filtered["Duration"].values
-                    
-                    # Calculate days from start and days to deadline
-                    summary_df["Days from Start"] = (today - df_filtered["Order Date"].dt.date).apply(lambda x: x.days)
-                    summary_df["Days to Deadline"] = (df_filtered["Due Date"].dt.date - today).apply(lambda x: x.days)
-                else:
-                    summary_df = df_filtered[["Order ID", "Produk", "Buyer", "Order Date", "Due Date", "Status", "Progress"]].copy()
-                    summary_df["Order Date"] = summary_df["Order Date"].dt.strftime('%Y-%m-%d')
-                    summary_df["Due Date"] = summary_df["Due Date"].dt.strftime('%Y-%m-%d')
-                    summary_df["Duration (days)"] = df_filtered["Duration"].values
-                
-                st.dataframe(summary_df, use_container_width=True, hide_index=True)
-                
-                # Progress Analysis
-                st.markdown("---")
-                st.subheader("📈 Progress Analysis")
-                
-                analysis_col1, analysis_col2 = st.columns(2)
-                
-                with analysis_col1:
-                    st.markdown("**⚠️ Orders Needing Attention**")
-                    for idx, row in df_filtered.iterrows():
-                        days_from_start = (today - row['Order Date'].date()).days
-                        days_to_deadline = (row['Due Date'].date() - today).days
-                        expected_progress = min(100, (days_from_start / row['Duration'] * 100)) if row['Duration'] > 0 else 0
-                        actual_progress = row['Progress_Num']
-                        
-                        if actual_progress < expected_progress - 10 and days_to_deadline > 0:  # 10% tolerance
-                            st.warning(f"🔔 **{row['Order ID']}** - Progress: {actual_progress:.0f}% (Expected: {expected_progress:.0f}%)")
-                
-                with analysis_col2:
-                    st.markdown("**✅ On-Track Orders**")
-                    on_track_count = 0
-                    for idx, row in df_filtered.iterrows():
-                        days_from_start = (today - row['Order Date'].date()).days
-                        expected_progress = min(100, (days_from_start / row['Duration'] * 100)) if row['Duration'] > 0 else 0
-                        actual_progress = row['Progress_Num']
-                        
-                        if actual_progress >= expected_progress - 10:
-                            on_track_count += 1
-                    
-                    st.success(f"✅ {on_track_count} dari {len(df_filtered)} orders on-track atau ahead")
-                    
-            else:
-                st.warning("Tidak ada data untuk ditampilkan dalam Gantt Chart")
-        else:
-            st.warning("Tidak ada data sesuai filter yang dipilih")
-    else:
-        st.info("📝 Belum ada data untuk membuat Gantt Chart.")
+
 # ===== MENU: ANALYTICS =====
 elif st.session_state["menu"] == "Analytics":
     st.header("📈 ANALISIS & LAPORAN")
