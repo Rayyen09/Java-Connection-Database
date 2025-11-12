@@ -875,7 +875,7 @@ elif st.session_state["menu"] == "Input":
                         }
                         
                         # Initialize history
-                         initial_history = [add_history_entry(f"{new_order_id}-P{prod_idx+1}", "Order Created", 
+                        initial_history = [add_history_entry(f"{new_order_id}-P{prod_idx+1}", "Order Created", 
                         f"Product: {product['nama']}, Status: {status}, Priority: {prioritas}")]
                        
                         # ===== MODIFIKASI DI SINI =====
