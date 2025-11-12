@@ -348,7 +348,30 @@ def load_data():
         "Prioritas", "Status", "Progress", "Proses Saat Ini", "Keterangan",
         "Tracking", "History"
     ])
-
+    
+def migrate_database_structure():
+    """Migrasi database ke struktur baru dengan field tambahan"""
+    df = st.session_state["data_produksi"]
+    
+    if not df.empty:
+        # Add new columns if they don't exist
+        new_columns = {
+            "Material": "-",
+            "Finishing": "-",
+            "Ukuran": "-",
+            "Packing": "-",
+            "Image Path": ""
+        }
+        
+        for col, default_val in new_columns.items():
+            if col not in df.columns:
+                df[col] = default_val
+        
+        st.session_state["data_produksi"] = df
+        save_data(df)
+        return True
+    return False
+    
 def save_data(df):
     """Menyimpan data ke file JSON"""
     try:
@@ -463,10 +486,40 @@ def add_history_entry(order_id, action, details):
         "action": action,
         "details": details
     }
+# ===== FUNGSI UNTUK HANDLE MULTI-PRODUCT =====
+def save_uploaded_image(uploaded_file, order_id, product_idx):
+    """Menyimpan gambar yang diupload"""
+    if uploaded_file is not None:
+        # Create images directory if not exists
+        images_dir = "product_images"
+        if not os.path.exists(images_dir):
+            os.makedirs(images_dir)
+        
+        # Generate filename
+        file_extension = uploaded_file.name.split('.')[-1]
+        filename = f"{order_id}_product{product_idx}.{file_extension}"
+        filepath = os.path.join(images_dir, filename)
+        
+        # Save file
+        with open(filepath, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        
+        return filepath
+    return None
 
+def get_image_path(order_id, product_idx):
+    """Mendapatkan path gambar produk"""
+    images_dir = "product_images"
+    for ext in ['jpg', 'jpeg', 'png']:
+        filepath = os.path.join(images_dir, f"{order_id}_product{product_idx}.{ext}")
+        if os.path.exists(filepath):
+            return filepath
+    return None
+    
 # ===== INISIALISASI =====
 if "data_produksi" not in st.session_state:
     st.session_state["data_produksi"] = load_data()
+    migrate_database_structure() 
 if "buyers" not in st.session_state:
     st.session_state["buyers"] = load_buyers()
 if "products" not in st.session_state:
@@ -603,96 +656,209 @@ if st.session_state["menu"] == "Dashboard":
     else:
         st.info("📝 Belum ada data. Silakan input pesanan baru.")
 
-# ===== MENU: INPUT PESANAN BARU =====
+# ===== MENU: INPUT PESANAN BARU (MULTI-PRODUCT) =====
 elif st.session_state["menu"] == "Input":
-    st.header("📋 Form Input Pesanan Baru")
+    st.header("📋 Form Input Pesanan Baru (Multi-Product)")
     
-    with st.container():
-        st.markdown("""
-        <style>
-        .label-row {
-            display: flex;
-            align-items: center;
-            height: 38px;
-            margin-bottom: 18px;
-            font-weight: bold;
-        }
-        </style>
-        """, unsafe_allow_html=True)
+    # Initialize session state for products
+    if "input_products" not in st.session_state:
+        st.session_state["input_products"] = []
+    
+    # ===== SECTION 1: ORDER INFORMATION =====
+    st.markdown("### 📦 Informasi Order")
+    
+    col_order1, col_order2, col_order3 = st.columns(3)
+    
+    with col_order1:
+        order_date = st.date_input("Order Date", datetime.date.today(), key="input_order_date")
+    
+    with col_order2:
+        buyers_list = get_buyer_names()
+        buyer = st.selectbox("Buyer Name", buyers_list, key="input_buyer")
+    
+    with col_order3:
+        due_date = st.date_input("Due Date", datetime.date.today() + datetime.timedelta(days=30), key="input_due")
+    
+    col_order4, col_order5 = st.columns(2)
+    
+    with col_order4:
+        prioritas = st.selectbox("Prioritas", ["High", "Medium", "Low"], key="input_priority")
+    
+    with col_order5:
+        status = st.selectbox("Status", ["Pending", "Accepted", "Rejected"], key="input_status")
+    
+    st.markdown("---")
+    
+    # ===== SECTION 2: PRODUCT INPUT =====
+    st.markdown("### 📦 Tambah Produk ke Order")
+    
+    with st.form("add_product_form", clear_on_submit=True):
+        col_prod1, col_prod2 = st.columns(2)
         
-        col1, col2 = st.columns([1, 3])
-        
-        with col1:
-            st.markdown("<div class='label-row'>Order Date</div>", unsafe_allow_html=True)
-            st.markdown("<div class='label-row'>Buyer Name</div>", unsafe_allow_html=True)            
-            st.markdown("<div class='label-row'>Produk</div>", unsafe_allow_html=True)            
-            st.markdown("<div class='label-row'>Jumlah (pcs)</div>", unsafe_allow_html=True)            
-            st.markdown("<div class='label-row'>Due Date</div>", unsafe_allow_html=True)            
-            st.markdown("<div class='label-row'>Prioritas</div>", unsafe_allow_html=True)
-            st.markdown("<div class='label-row'>Status</div>", unsafe_allow_html=True)
-        
-        with col2:
-            order_date = st.date_input("", datetime.date.today(), label_visibility="collapsed", key="input_order_date")
-            
-            buyers_list = get_buyer_names()
-            buyer = st.selectbox("", buyers_list, label_visibility="collapsed", key="input_buyer")
-            
+        with col_prod1:
             products_list = st.session_state["products"]
             if products_list:
-                produk_option = st.selectbox("", ["-- Pilih Produk --"] + products_list, label_visibility="collapsed", key="input_produk_select")
-                if produk_option == "-- Pilih Produk --":
-                    produk = st.text_input("", placeholder="Atau ketik nama produk baru", label_visibility="collapsed", key="input_produk_manual")
+                produk_option = st.selectbox("Pilih Produk", ["-- Pilih dari Database --"] + products_list, key="form_produk_select")
+                if produk_option == "-- Pilih dari Database --":
+                    produk_name = st.text_input("Atau ketik nama produk baru", key="form_produk_manual")
                 else:
-                    produk = produk_option
+                    produk_name = produk_option
             else:
-                produk = st.text_input("", placeholder="Masukkan nama produk", label_visibility="collapsed", key="input_produk")
+                produk_name = st.text_input("Nama Produk", key="form_produk")
             
-            qty = st.number_input("", min_value=1, value=1, label_visibility="collapsed", key="input_qty")
-            due_date = st.date_input("", datetime.date.today() + datetime.timedelta(days=30), label_visibility="collapsed", key="input_due")
-            prioritas = st.selectbox("", ["High", "Medium", "Low"], label_visibility="collapsed", key="input_priority")
-            status = st.selectbox("", ["Pending", "Accepted", "Rejected"], label_visibility="collapsed", key="input_status")
+            qty = st.number_input("Quantity (pcs)", min_value=1, value=1, key="form_qty")
+            
+            material = st.text_input("Material", placeholder="Contoh: Kayu Jati, MDF, dll", key="form_material")
+            
+            finishing = st.text_input("Finishing", placeholder="Contoh: Natural, Duco Putih, dll", key="form_finishing")
         
-        st.markdown("")
-        col_btn = st.columns([1, 3])
+        with col_prod2:
+            ukuran = st.text_input("Ukuran (cm)", placeholder="Contoh: 100 x 50 x 75", key="form_ukuran")
+            
+            packing = st.text_input("Packing", placeholder="Contoh: Bubble wrap + Kardus", key="form_packing")
+            
+            uploaded_image = st.file_uploader("Upload Gambar Produk (JPG/PNG)", 
+                                             type=['jpg', 'jpeg', 'png'], 
+                                             key="form_image")
+            
+            keterangan = st.text_area("Keterangan Tambahan", 
+                                     placeholder="Catatan khusus untuk produk ini...", 
+                                     height=100, 
+                                     key="form_notes")
         
-        with col_btn[0]:
+        submit_product = st.form_submit_button("➕ Tambah Produk ke Order", use_container_width=True, type="primary")
+        
+        if submit_product:
+            if produk_name and qty > 0:
+                # Create temporary product data
+                temp_product = {
+                    "nama": produk_name,
+                    "qty": qty,
+                    "material": material if material else "-",
+                    "finishing": finishing if finishing else "-",
+                    "ukuran": ukuran if ukuran else "-",
+                    "packing": packing if packing else "-",
+                    "keterangan": keterangan if keterangan else "-",
+                    "image": uploaded_image  # Store uploaded file temporarily
+                }
+                
+                st.session_state["input_products"].append(temp_product)
+                st.success(f"✅ Produk '{produk_name}' ditambahkan! Total produk: {len(st.session_state['input_products'])}")
+                st.rerun()
+            else:
+                st.warning("⚠️ Harap isi nama produk dan quantity!")
+    
+    # ===== SECTION 3: PRODUCT LIST =====
+    if st.session_state["input_products"]:
+        st.markdown("---")
+        st.markdown("### 📋 Daftar Produk dalam Order Ini")
+        
+        for idx, product in enumerate(st.session_state["input_products"]):
+            with st.expander(f"📦 Produk {idx + 1}: {product['nama']} ({product['qty']} pcs)", expanded=False):
+                col_display1, col_display2, col_display3 = st.columns([2, 2, 1])
+                
+                with col_display1:
+                    st.write(f"**Material:** {product['material']}")
+                    st.write(f"**Finishing:** {product['finishing']}")
+                    st.write(f"**Ukuran:** {product['ukuran']}")
+                
+                with col_display2:
+                    st.write(f"**Packing:** {product['packing']}")
+                    st.write(f"**Keterangan:** {product['keterangan']}")
+                
+                with col_display3:
+                    if st.button("🗑️ Hapus", key=f"remove_product_{idx}", use_container_width=True):
+                        st.session_state["input_products"].pop(idx)
+                        st.rerun()
+        
+        st.markdown("---")
+        
+        # ===== SECTION 4: SUBMIT ORDER =====
+        st.markdown("### 💾 Simpan Order")
+        
+        col_submit1, col_submit2, col_submit3 = st.columns([1, 1, 2])
+        
+        with col_submit1:
+            if st.button("🗑️ BATAL & HAPUS SEMUA", use_container_width=True, type="secondary"):
+                st.session_state["input_products"] = []
+                st.rerun()
+        
+        with col_submit2:
             if st.button("📤 SUBMIT ORDER", use_container_width=True, type="primary"):
-                if produk and buyer:
+                if buyer and st.session_state["input_products"]:
+                    # Generate Order ID
                     existing_ids = st.session_state["data_produksi"]["Order ID"].tolist() if not st.session_state["data_produksi"].empty else []
                     new_id_num = max([int(oid.split("-")[1]) for oid in existing_ids if "-" in oid], default=2400) + 1
                     new_order_id = f"ORD-{new_id_num}"
                     
-                    # Initialize history with first entry
-                    initial_history = [add_history_entry(new_order_id, "Order Created", 
-                        f"Status: {status}, Priority: {prioritas}")]
+                    # Save all products
+                    new_orders = []
                     
-                    new_data = pd.DataFrame({
-                        "Order ID": [new_order_id],
-                        "Order Date": [order_date],
-                        "Buyer": [buyer],
-                        "Produk": [produk],
-                        "Qty": [qty],
-                        "Due Date": [due_date],
-                        "Prioritas": [prioritas],
-                        "Status": [status],
-                        "Progress": ["0%"],
-                        "Proses Saat Ini": ["Pre Order"],
-                        "Keterangan": [""],
-                        "Tracking": [json.dumps(init_tracking_data(new_order_id))],
-                        "History": [json.dumps(initial_history)]
-                    })
+                    for prod_idx, product in enumerate(st.session_state["input_products"]):
+                        # Save image if uploaded
+                        image_path = None
+                        if product.get("image"):
+                            image_path = save_uploaded_image(product["image"], new_order_id, prod_idx)
+                        
+                        # Create product detail JSON
+                        product_detail = {
+                            "nama": product["nama"],
+                            "qty": product["qty"],
+                            "material": product["material"],
+                            "finishing": product["finishing"],
+                            "ukuran": product["ukuran"],
+                            "packing": product["packing"],
+                            "keterangan": product["keterangan"],
+                            "image_path": image_path if image_path else ""
+                        }
+                        
+                        # Initialize history
+                        initial_history = [add_history_entry(f"{new_order_id}-P{prod_idx+1}", "Order Created", 
+                            f"Product: {product['nama']}, Status: {status}, Priority: {prioritas}")]
+                        
+                        # Create order data for each product
+                        order_data = {
+                            "Order ID": f"{new_order_id}-P{prod_idx+1}",  # Add product index
+                            "Order Date": order_date,
+                            "Buyer": buyer,
+                            "Produk": product["nama"],
+                            "Qty": product["qty"],
+                            "Material": product["material"],
+                            "Finishing": product["finishing"],
+                            "Ukuran": product["ukuran"],
+                            "Packing": product["packing"],
+                            "Due Date": due_date,
+                            "Prioritas": prioritas,
+                            "Status": status,
+                            "Progress": "0%",
+                            "Proses Saat Ini": "Pre Order",
+                            "Keterangan": product["keterangan"],
+                            "Image Path": image_path if image_path else "",
+                            "Tracking": json.dumps(init_tracking_data(f"{new_order_id}-P{prod_idx+1}")),
+                            "History": json.dumps(initial_history)
+                        }
+                        
+                        new_orders.append(order_data)
                     
+                    # Add all products to database
+                    new_df = pd.DataFrame(new_orders)
                     st.session_state["data_produksi"] = pd.concat(
-                        [st.session_state["data_produksi"], new_data], ignore_index=True
+                        [st.session_state["data_produksi"], new_df], ignore_index=True
                     )
                     
                     if save_data(st.session_state["data_produksi"]):
-                        st.success(f"✅ Order {new_order_id} berhasil ditambahkan!")
+                        st.success(f"✅ Order {new_order_id} dengan {len(st.session_state['input_products'])} produk berhasil ditambahkan!")
                         st.balloons()
+                        
+                        # Clear products list
+                        st.session_state["input_products"] = []
+                        st.rerun()
                 else:
-                    st.warning("⚠️ Harap lengkapi data produk dan buyer!")
+                    st.warning("⚠️ Harap pilih buyer dan tambahkan minimal 1 produk!")
+    
+    else:
+        st.info("📝 Belum ada produk yang ditambahkan. Silakan tambah produk menggunakan form di atas.")
 
-# ===== MENU: DAFTAR ORDER =====
 elif st.session_state["menu"] == "Orders":
     st.header("📦 DAFTAR ORDER")
     
@@ -701,15 +867,12 @@ elif st.session_state["menu"] == "Orders":
     if not df.empty:
         df['Tracking Status'] = df.apply(lambda row: get_tracking_status_from_progress(row['Progress'], row['Status']), axis=1)
         
-        # Filters
-        col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+        col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1:
             filter_buyer = st.multiselect("Filter Buyer", df["Buyer"].unique())
         with col_f2:
-            filter_status = st.multiselect("Filter Status", ["Accepted", "Pending", "Rejected"], default=["Accepted", "Pending", "Rejected"])
+            filter_status = st.multiselect("Filter Status", ["Accepted", "Pending", "Rejected"], default=["Accepted", "Pending"])
         with col_f3:
-            filter_tracking = st.multiselect("Filter Tracking Status", ["Pending", "On Going", "Done"])
-        with col_f4:
             search_order = st.text_input("🔍 Cari Order ID / Produk")
         
         df_filtered = df.copy()
@@ -717,8 +880,6 @@ elif st.session_state["menu"] == "Orders":
             df_filtered = df_filtered[df_filtered["Buyer"].isin(filter_buyer)]
         if filter_status:
             df_filtered = df_filtered[df_filtered["Status"].isin(filter_status)]
-        if filter_tracking:
-            df_filtered = df_filtered[df_filtered["Tracking Status"].isin(filter_tracking)]
         if search_order:
             df_filtered = df_filtered[
                 df_filtered["Order ID"].str.contains(search_order, case=False, na=False) | 
@@ -726,143 +887,44 @@ elif st.session_state["menu"] == "Orders":
             ]
         
         st.markdown("---")
+        st.info(f"📦 Menampilkan {len(df_filtered)} order")
         
-        # Check if mobile
-        if is_mobile():
-            # ===== MOBILE VIEW: CARD-BASED =====
-            st.info(f"📦 Menampilkan {len(df_filtered)} order")
-            
-            for idx, row in df_filtered.iterrows():
-                with st.expander(f"📦 {row['Order ID']} - {row['Buyer']}", expanded=False):
-                    # Order details
-                    detail_col1, detail_col2 = st.columns(2)
-                    
-                    with detail_col1:
-                        st.write(f"**Produk:** {row['Produk']}")
-                        st.write(f"**Qty:** {row['Qty']} pcs")
-                        st.write(f"**Status:** {row['Status']}")
-                        st.write(f"**Progress:** {row['Progress']}")
-                    
-                    with detail_col2:
-                        st.write(f"**Order Date:** {row['Order Date']}")
-                        st.write(f"**Due Date:** {row['Due Date']}")
-                        st.write(f"**Prioritas:** {row['Prioritas']}")
-                        st.write(f"**Proses:** {row['Proses Saat Ini']}")
-                    
-                    # Tracking Status
-                    tracking_status = row['Tracking Status']
-                    tracking_colors = {
-                        "Pending": "🟡",
-                        "On Going": "🔵",
-                        "Done": "🟢"
-                    }
-                    st.write(f"**Tracking:** {tracking_colors.get(tracking_status, '⚪')} {tracking_status}")
-                    
-                    # Action buttons
-                    st.markdown("---")
-                    btn_col1, btn_col2 = st.columns(2)
-                    with btn_col1:
-                        if st.button("✏️ Edit Order", key=f"edit_{idx}", use_container_width=True):
-                            st.session_state["edit_order_idx"] = idx
-                            st.session_state["menu"] = "Progress"
-                            st.rerun()
-                    with btn_col2:
-                        if st.button("🗑️ Delete Order", key=f"del_{idx}", use_container_width=True):
-                            if st.session_state.get(f"confirm_delete_{idx}", False):
-                                # Confirmed delete
-                                st.session_state["data_produksi"].drop(idx, inplace=True)
-                                st.session_state["data_produksi"].reset_index(drop=True, inplace=True)
-                                save_data(st.session_state["data_produksi"])
-                                st.success(f"✅ Order {row['Order ID']} berhasil dihapus!")
-                                st.rerun()
-                            else:
-                                # Ask for confirmation
-                                st.session_state[f"confirm_delete_{idx}"] = True
-                                st.rerun()
-        else:
-            # ===== DESKTOP/TABLET VIEW: TABLE =====
-            st.info(f"📦 Menampilkan {len(df_filtered)} order")
-            
-            header_cols = st.columns([1, 1, 0.8, 1.3, 0.5, 1, 0.8, 0.9, 1, 1, 0.8])
-            header_cols[0].markdown("**Order ID**")
-            header_cols[1].markdown("**Order Date**")
-            header_cols[2].markdown("**Buyer**")
-            header_cols[3].markdown("**Produk**")
-            header_cols[4].markdown("**Qty**")
-            header_cols[5].markdown("**Due Date**")
-            header_cols[6].markdown("**Status**")
-            header_cols[7].markdown("**Progress**")
-            header_cols[8].markdown("**Proses**")
-            header_cols[9].markdown("**Tracking**")
-            header_cols[10].markdown("**Action**")
-            
-            if "delete_confirm" not in st.session_state:
-                st.session_state["delete_confirm"] = {}
-            
-            for idx, row in df_filtered.iterrows():
-                cols = st.columns([1, 1, 0.8, 1.3, 0.5, 1, 0.8, 0.9, 1, 1, 0.8])
+        for idx, row in df_filtered.iterrows():
+            with st.expander(f"📦 {row['Order ID']} - {row['Buyer']} - {row['Produk']}", expanded=False):
+                col1, col2, col3 = st.columns([2, 2, 1])
                 
-                cols[0].write(row['Order ID'])
-                cols[1].write(str(row['Order Date']))
-                cols[2].write(row['Buyer'])
-                cols[3].write(row['Produk'])
-                cols[4].write(row['Qty'])
-                cols[5].write(str(row['Due Date']))
+                with col1:
+                    st.write(f"**Qty:** {row['Qty']} pcs")
+                    st.write(f"**Material:** {row.get('Material', '-')}")
+                    st.write(f"**Finishing:** {row.get('Finishing', '-')}")
+                    st.write(f"**Ukuran:** {row.get('Ukuran', '-')}")
                 
-                status_colors = {
-                    "Accepted": "🟢",
-                    "Pending": "🟡",
-                    "Rejected": "🔴"
-                }
-                cols[6].write(f"{status_colors.get(row['Status'], '')} {row['Status']}")
+                with col2:
+                    st.write(f"**Packing:** {row.get('Packing', '-')}")
+                    st.write(f"**Due Date:** {row['Due Date']}")
+                    st.write(f"**Status:** {row['Status']}")
+                    st.write(f"**Progress:** {row['Progress']}")
                 
-                cols[7].write(row['Progress'])
-                cols[8].write(row['Proses Saat Ini'])
+                with col3:
+                    if row.get('Image Path') and os.path.exists(row['Image Path']):
+                        st.image(row['Image Path'], caption="Product", width=150)
+                    else:
+                        st.info("📷 No image")
                 
-                tracking_colors = {
-                    "Pending": ("⏳", "#6B7280"),
-                    "On Going": ("🔄", "#3B82F6"),
-                    "Done": ("✅", "#10B981")
-                }
-                track_icon, track_color = tracking_colors.get(row['Tracking Status'], ("⚪", "#6B7280"))
-                cols[9].markdown(f"<span style='color: {track_color};'>{track_icon} {row['Tracking Status']}</span>", unsafe_allow_html=True)
-                
-                with cols[10]:
-                    action_col1, action_col2 = st.columns(2)
-                    with action_col1:
-                        if st.button("✏️", key=f"edit_{idx}", help="Edit Order", use_container_width=True):
-                            st.session_state["edit_order_idx"] = idx
-                            st.session_state["menu"] = "Progress"
-                            st.rerun()
-                    
-                    with action_col2:
-                        if st.session_state["delete_confirm"].get(idx, False):
-                            if st.button("✅", key=f"confirm_del_{idx}", help="Confirm Delete", use_container_width=True):
-                                st.session_state["data_produksi"].drop(idx, inplace=True)
-                                st.session_state["data_produksi"].reset_index(drop=True, inplace=True)
-                                save_data(st.session_state["data_produksi"])
-                                st.session_state["delete_confirm"][idx] = False
-                                st.success(f"✅ Order {row['Order ID']} berhasil dihapus!")
-                                st.rerun()
-                        else:
-                            if st.button("🗑️", key=f"del_{idx}", help="Delete Order", use_container_width=True):
-                                st.session_state["delete_confirm"][idx] = True
-                                st.rerun()
-                
-                if st.session_state["delete_confirm"].get(idx, False):
-                    st.markdown(f"""
-                    <div style='background-color: #991B1B; padding: 10px; border-radius: 5px; margin: 5px 0;'>
-                        <span style='color: white; font-weight: bold;'>⚠️ Konfirmasi Hapus Order {row['Order ID']}?</span>
-                        <br>
-                        <span style='color: #FEE2E2; font-size: 0.9em;'>Klik tombol ✅ untuk konfirmasi atau refresh halaman untuk batal</span>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    if st.button(f"❌ Batal Hapus", key=f"cancel_del_{idx}", type="secondary"):
-                        st.session_state["delete_confirm"][idx] = False
+                st.markdown("---")
+                btn_col1, btn_col2 = st.columns(2)
+                with btn_col1:
+                    if st.button("✏️ Edit", key=f"edit_{idx}", use_container_width=True):
+                        st.session_state["edit_order_idx"] = idx
+                        st.session_state["menu"] = "Progress"
                         st.rerun()
-                
-                st.markdown("<div style='margin: 8px 0; border-bottom: 1px solid #374151;'></div>", unsafe_allow_html=True)
+                with btn_col2:
+                    if st.button("🗑️ Delete", key=f"del_{idx}", use_container_width=True):
+                        st.session_state["data_produksi"].drop(idx, inplace=True)
+                        st.session_state["data_produksi"].reset_index(drop=True, inplace=True)
+                        save_data(st.session_state["data_produksi"])
+                        st.success(f"✅ Order {row['Order ID']} berhasil dihapus!")
+                        st.rerun()
     else:
         st.info("📝 Belum ada order yang diinput.")
 
@@ -1888,22 +1950,45 @@ elif st.session_state["menu"] == "Analytics":
             st.plotly_chart(fig_product, use_container_width=True)
         
         with tab4:
-            st.subheader("Analysis by Timeline")
+            st.subheader("Analysis by Specifications")
+    
+            spec_col1, spec_col2 = st.columns(2)
+    
+            with spec_col1:
+                # Material analysis
+                if 'Material' in df.columns:
+                    material_stats = df.groupby("Material").agg({
+                        "Order ID": "count",
+                        "Qty": "sum"
+                    }).rename(columns={"Order ID": "Total Orders", "Qty": "Total Qty"})
+                    
+                    st.markdown("**📦 Orders by Material**")
+                    st.dataframe(material_stats, use_container_width=True)
+                    
+                    fig_material = px.pie(
+                        values=material_stats["Total Orders"],
+                        names=material_stats.index,
+                        title="Distribution by Material"
+                    )
+                    st.plotly_chart(fig_material, use_container_width=True)
             
-            df_copy = df.copy()
-            df_copy['Order Month'] = pd.to_datetime(df_copy['Order Date']).dt.to_period('M').astype(str)
-            monthly_orders = df_copy.groupby('Order Month').agg({
-                'Order ID': 'count',
-                'Qty': 'sum'
-            }).rename(columns={'Order ID': 'Total Orders', 'Qty': 'Total Qty'})
-            
-            st.dataframe(monthly_orders, use_container_width=True)
-            
-            fig_timeline = px.line(monthly_orders, y=['Total Orders', 'Total Qty'],
-                                  labels={'value': 'Count', 'Order Month': 'Month'},
-                                  title="Orders & Quantity Trend by Month",
-                                  markers=True)
-            st.plotly_chart(fig_timeline, use_container_width=True)
+            with spec_col2:
+                # Finishing analysis
+                if 'Finishing' in df.columns:
+                    finishing_stats = df.groupby("Finishing").agg({
+                        "Order ID": "count",
+                        "Qty": "sum"
+                    }).rename(columns={"Order ID": "Total Orders", "Qty": "Total Qty"})
+                    
+                    st.markdown("**🎨 Orders by Finishing**")
+                    st.dataframe(finishing_stats, use_container_width=True)
+                    
+                    fig_finishing = px.pie(
+                        values=finishing_stats["Total Orders"],
+                        names=finishing_stats.index,
+                        title="Distribution by Finishing"
+                    )
+                    st.plotly_chart(fig_finishing, use_container_width=True)
         
         # Export section
         st.markdown("---")
