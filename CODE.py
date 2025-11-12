@@ -576,12 +576,16 @@ def get_image_path(order_id, product_idx):
 # ===== INISIALISASI =====
 if "data_produksi" not in st.session_state:
     st.session_state["data_produksi"] = load_data()
-    # PANGGIL MIGRASI DI SINI
-    if migrate_tracking_to_qty():
-        # Muat ulang data jika migrasi terjadi
-        st.session_state["data_produksi"] = load_data()
+
+# JALANKAN MIGRASI SETIAP SAAT (Fungsi ini aman/idempotent)
+# Ini akan memperbaiki data yang ada di session state JIKA formatnya lama
+if migrate_tracking_to_qty():
+    # Muat ulang data jika migrasi terjadi
+    st.session_state["data_produksi"] = load_data()
     
-    migrate_database_structure() 
+# Migrasi struktur kolom (Material, Finishing, dll)
+migrate_database_structure() 
+
 if "buyers" not in st.session_state:
     st.session_state["buyers"] = load_buyers()
 if "products" not in st.session_state:
@@ -591,7 +595,7 @@ if "menu" not in st.session_state:
 if "frozen_start" not in st.session_state:
     st.session_state["frozen_start"] = datetime.date(2025, 10, 27)
     st.session_state["frozen_end"] = datetime.date(2025, 11, 17)
-
+    
 # ===== SIDEBAR MENU =====
 st.sidebar.title("🏭 PPIC-DSS MENU")
 st.sidebar.markdown("---")
@@ -1256,7 +1260,7 @@ elif st.session_state["menu"] == "Progress":
         else:
             st.info("Belum ada riwayat update untuk order ini")
             
-# ===== MENU: TRACKING PRODUKSI (VERSI BARU) =====
+# ===== MENU: TRACKING PRODUKSI (VERSI BARU DENGAN QTY PARSIAL) =====
 elif st.session_state["menu"] == "Tracking":
     st.header("🔍 TRACKING PRODUKSI PER WORKSTATION")
     
@@ -1287,126 +1291,125 @@ elif st.session_state["menu"] == "Tracking":
         # Summary cards at the top
         sum_col1, sum_col2, sum_col3, sum_col4 = st.columns(4)
         
-        total_orders = len(df_track_filtered)
+        total_orders_filtered = len(df_track_filtered)
         pending_count = 0
         ongoing_count = 0
         done_count = 0
         
         for idx, row in df_track_filtered.iterrows():
-            tracking = get_tracking_status_from_progress(row['Progress'], row['Status'])
-            if tracking == "Pending":
+            tracking_status = get_tracking_status_from_progress(row['Progress'], row['Status'])
+            if tracking_status == "Pending":
                 pending_count += 1
-            elif tracking == "On Going":
+            elif tracking_status == "On Going":
                 ongoing_count += 1
-            elif tracking == "Done":
+            elif tracking_status == "Done":
                 done_count += 1
         
-        sum_col1.metric("📦 Total Orders", total_orders)
+        sum_col1.metric("📦 Total Orders", total_orders_filtered)
         sum_col2.metric("⏳ Pending", pending_count)
         sum_col3.metric("🔄 On Going", ongoing_count)
         sum_col4.metric("✅ Done", done_count)
         
         st.markdown("---")
         
-        # ===== MODIFIKASI DIMULAI DI SINI =====
-        
+        # ===== TAMPILAN WIP BARU DENGAN QTY PARSIAL =====
         st.subheader("📋 Workstation WIP (Work in Progress)")
-
-        st.info("""
-        Tampilan ini menunjukkan total Qty (WIP) dari order yang **"On Going"** atau **"Pending"** yang berada di tahap ini atau tahap-tahap sebelumnya (sesuai permintaan Anda untuk mencegah ambiguitas).
-        
-        **Penting:** Sistem saat ini mengasumsikan **seluruh Qty order** (misal, 20 pcs) bergerak bersamaan sebagai satu unit. 
-        Menu "Update Progress" saat ini **belum mendukung** input Qty parsial (misal, 5 dari 20 pcs) yang pindah ke tahap selanjutnya. 
-        
-        Jika Anda memerlukan fitur tracking Qty parsial, diperlukan modifikasi lebih lanjut pada menu "Update Progress" dan struktur database.
-        """)
+        st.info("Tampilan ini menunjukkan jumlah Qty parsial dari *semua* order yang sedang berada di setiap workstation.")
 
         stages = get_tracking_stages()
         
-        # Filter hanya untuk order yang Work-in-Progress (WIP)
-        # Yaitu order yang tidak 'Rejected' dan tidak '100%' Done.
-        df_wip = df_track_filtered[
-            (df_track_filtered["Status"] != "Rejected") &
-            (df_track_filtered["Progress"] != "100%")
-        ].copy()
+        # Siapkan dictionary untuk menampung Qty total per tahap dan daftar order
+        stage_wip_data = {stage: {"total_qty": 0, "orders": []} for stage in stages}
         
-        if df_wip.empty:
-            st.warning("Tidak ada order 'On Going' atau 'Pending' yang sesuai dengan filter Anda.")
-        else:
-            cumulative_stages = [] # Untuk melacak tahap-tahap sebelumnya
-            
-            for stage_index, stage in enumerate(stages):
-                cumulative_stages.append(stage)
-                
-                # 1. Hitung Qty KUMULATIF (WIP)
-                # Order yang "Proses Saat Ini" nya ada di tahap ini atau sebelumnya
-                df_cumulative_wip = df_wip[df_wip["Proses Saat Ini"].isin(cumulative_stages)]
-                total_wip_qty = df_cumulative_wip["Qty"].sum()
-                
-                # 2. Hitung Qty DISKRET (Hanya di tahap ini)
-                df_at_this_stage = df_wip[df_wip["Proses Saat Ini"] == stage]
-                qty_at_this_stage = df_at_this_stage["Qty"].sum()
-                order_count_at_stage = len(df_at_this_stage)
+        # Filter hanya untuk order yang Work-in-Progress (WIP)
+        df_wip = df_track_filtered[
+            (df_track_filtered["Status"] != "Rejected")
+        ].copy()
 
-                # Tampilkan header workstation dengan metrik
+        if df_wip.empty:
+            st.warning("Tidak ada order yang sesuai dengan filter Anda.")
+        else:
+            # Akumulasi Qty dari semua order
+            for idx, row in df_wip.iterrows():
+                try:
+                    tracking_data = json.loads(row["Tracking"])
+                    for stage in stages:
+                        qty_in_stage = tracking_data.get(stage, {}).get("qty", 0)
+                        if qty_in_stage > 0:
+                            stage_wip_data[stage]["total_qty"] += qty_in_stage
+                            stage_wip_data[stage]["orders"].append((row, qty_in_stage))
+                except:
+                    # Fallback untuk data lama/rusak (PASCA MIGRASI SEHARUSNYA TIDAK TERJADI)
+                    current_stage = row["Proses Saat Ini"]
+                    if current_stage in stage_wip_data:
+                        stage_wip_data[current_stage]["total_qty"] += row["Qty"]
+                        stage_wip_data[current_stage]["orders"].append((row, row["Qty"]))
+
+            # Tampilkan per workstation
+            cumulative_qty = 0
+            for stage_index, stage in enumerate(stages):
+                data = stage_wip_data[stage]
+                qty_at_this_stage = data["total_qty"]
+                order_count_at_stage = len(data["orders"])
+
+                # Qty kumulatif adalah semua Qty di tahap ini dan sebelumnya
+                cumulative_qty += qty_at_this_stage
+                
                 st.markdown(f"### {stage_index + 1}. {stage}")
                 
                 metric_col1, metric_col2 = st.columns(2)
-                metric_col1.metric("Total WIP (Kumulatif)", f"{total_wip_qty:,} pcs", 
+                metric_col1.metric(f"Qty Tepat di Tahap Ini", f"{qty_at_this_stage:,} pcs", 
+                                  help=f"Total Qty dari {order_count_at_stage} order yang sebagian/seluruhnya ada di tahap ini.")
+                metric_col2.metric("Total WIP (Kumulatif)", f"{cumulative_qty:,} pcs",
                                   help="Total Qty 'On Going'/'Pending' di tahap ini ATAU tahap sebelumnya.")
-                metric_col2.metric("Qty Tepat di Tahap Ini", f"{qty_at_this_stage:,} pcs", f"{order_count_at_stage} orders")
                 
                 # Expander untuk menampilkan daftar order di tahap ini
-                with st.expander(f"Lihat {order_count_at_stage} order yang sedang di tahap '{stage}'", expanded=False):
-                    if not df_at_this_stage.empty:
-                        # Tampilkan detail order yang HANYA ada di tahap ini
-                        for idx, row in df_at_this_stage.sort_values("Due Date").iterrows():
+                with st.expander(f"Lihat {order_count_at_stage} order di tahap '{stage}'", expanded=False):
+                    if order_count_at_stage > 0:
+                        for order_row, qty_in_stage in data["orders"]:
+                            row = order_row # agar mudah dibaca
                             st.markdown(f"**{row['Order ID']}** - {row['Produk']}")
                             
                             det_col1, det_col2, det_col3 = st.columns(3)
                             det_col1.write(f"**Buyer:** {row['Buyer']}")
-                            det_col2.write(f"**Qty:** {row['Qty']} pcs")
+                            det_col2.write(f"**Qty di Tahap Ini:** {qty_in_stage} / {row['Qty']} pcs")
                             
                             # Due date color
                             due_date = row['Due Date']
                             days_until_due = (due_date - datetime.date.today()).days
                             if days_until_due < 0:
-                                date_color = "#EF4444"
-                                date_icon = "🔴"
+                                date_color = "#EF4444"; date_icon = "🔴"
                             elif days_until_due <= 7:
-                                date_color = "#F59E0B"
-                                date_icon = "🟡"
+                                date_color = "#F59E0B"; date_icon = "🟡"
                             else:
-                                date_color = "#10B981"
-                                date_icon = "🟢"
+                                date_color = "#10B981"; date_icon = "🟢"
                             det_col3.markdown(f"**Due:** <span style='color: {date_color};'>{date_icon} {str(due_date)}</span>", unsafe_allow_html=True)
                             
                             st.progress(int(row['Progress'].rstrip('%')) / 100)
                             
                             # Tombol untuk edit cepat
-                            if st.button("⚙️ Update Progress", key=f"track_edit_{idx}", use_container_width=True, type="secondary"):
-                                st.session_state["edit_order_idx"] = idx
+                            if st.button("⚙️ Update Progress", key=f"track_edit_{row.name}", use_container_width=True, type="secondary"):
+                                st.session_state["edit_order_idx"] = row.name
                                 st.session_state["menu"] = "Progress"
                                 st.rerun()
                                 
                             st.divider()
                     else:
-                        st.write(f"Tidak ada order yang sedang 'On Going'/'Pending' tepat di tahap {stage}.")
+                        st.write(f"Tidak ada Qty di tahap {stage}.")
                 
                 st.markdown("---") # Separator visual antar workstation
 
-        # ===== MODIFIKASI BERAKHIR DI SINI =====
-
         # Progress Distribution Chart (Tetap ada)
         st.markdown("---")
-        st.subheader("📈 Distribution by Process Stage")
+        st.subheader("📈 Distribution by Main Process Stage")
+        st.info("Bagan ini menunjukkan 'Proses Saat Ini' (tahap paling awal yang memiliki Qty) untuk setiap order.")
         
         stage_distribution = df_track_filtered["Proses Saat Ini"].value_counts()
         fig_stage = px.bar(
             x=stage_distribution.index, 
             y=stage_distribution.values,
-            labels={'x': 'Tahapan Proses', 'y': 'Jumlah Order'},
-            title="Jumlah Order per Tahapan",
+            labels={'x': 'Tahapan Proses Utama', 'y': 'Jumlah Order'},
+            title="Jumlah Order per Tahapan Proses Utama",
             color=stage_distribution.values,
             color_continuous_scale='Blues'
         )
