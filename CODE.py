@@ -348,6 +348,62 @@ def load_data():
         "Prioritas", "Status", "Progress", "Proses Saat Ini", "Keterangan",
         "Tracking", "History"
     ])
+def migrate_tracking_to_qty():
+    """
+    Migrasi data lama (berbasis status) ke data baru (berbasis Qty).
+    Hanya berjalan jika format lama terdeteksi.
+    """
+    df = st.session_state["data_produksi"]
+    if df.empty:
+        return False
+
+    # Cek apakah migrasi diperlukan (dengan melihat data pertama)
+    try:
+        sample_tracking = df.iloc[0]["Tracking"]
+        if isinstance(sample_tracking, str):
+            sample_data = json.loads(sample_tracking)
+            # Jika punya key 'status', ini format LAMA.
+            if "Pre Order" in sample_data and "status" in sample_data["Pre Order"]:
+                st.warning("Mendeteksi format data lama. Menjalankan migrasi Tracking ke Qty...")
+            else:
+                return False # Format baru, tidak perlu migrasi
+        else:
+            return False # Format baru, tidak perlu migrasi
+    except Exception as e:
+        st.error(f"Error checking migration: {e}")
+        return False # Error, jangan migrasi
+
+    # JALANKAN MIGRASI
+    migrated_count = 0
+    for idx, row in df.iterrows():
+        try:
+            # 1. Buat struktur tracking Qty baru (semua 0)
+            new_tracking_data = init_tracking_data()
+            
+            # 2. Ambil data Qty total dan proses saat ini
+            total_qty = row["Qty"]
+            current_stage = row["Proses Saat Ini"]
+            
+            # 3. Tempatkan SELURUH Qty di "Proses Saat Ini"
+            if current_stage in new_tracking_data:
+                new_tracking_data[current_stage]["qty"] = total_qty
+            else:
+                # Jika proses tidak valid, taruh di stage pertama
+                first_stage = get_tracking_stages()[0]
+                new_tracking_data[first_stage]["qty"] = total_qty
+
+            # 4. Update data di DataFrame
+            st.session_state["data_produksi"].at[idx, "Tracking"] = json.dumps(new_tracking_data)
+            migrated_count += 1
+            
+        except Exception as e:
+            st.error(f"Gagal migrasi Order ID {row['Order ID']}: {e}")
+
+    if migrated_count > 0:
+        save_data(st.session_state["data_produksi"])
+        st.success(f"✅ Migrasi {migrated_count} order ke sistem Qty-Tracking selesai!")
+        return True
+    return False
     
 def migrate_database_structure():
     """Migrasi database ke struktur baru dengan field tambahan"""
@@ -457,10 +513,11 @@ def get_tracking_stages():
         "Pengiriman"
     ]
 
-def init_tracking_data(order_id):
-    """Inisialisasi data tracking untuk order baru"""
+def init_tracking_data():
+    """Inisialisasi data tracking (berbasis Qty) untuk order baru"""
     stages = get_tracking_stages()
-    return {stage: {"status": "Pending", "date": None} for stage in stages}
+    # Struktur baru: hanya melacak Qty
+    return {stage: {"qty": 0} for stage in stages}
 
 def get_tracking_status_from_progress(progress_str, order_status):
     """Menentukan tracking status berdasarkan progress dan order status"""
@@ -519,6 +576,11 @@ def get_image_path(order_id, product_idx):
 # ===== INISIALISASI =====
 if "data_produksi" not in st.session_state:
     st.session_state["data_produksi"] = load_data()
+    # PANGGIL MIGRASI DI SINI
+    if migrate_tracking_to_qty():
+        # Muat ulang data jika migrasi terjadi
+        st.session_state["data_produksi"] = load_data()
+    
     migrate_database_structure() 
 if "buyers" not in st.session_state:
     st.session_state["buyers"] = load_buyers()
@@ -813,16 +875,25 @@ elif st.session_state["menu"] == "Input":
                         }
                         
                         # Initialize history
-                        initial_history = [add_history_entry(f"{new_order_id}-P{prod_idx+1}", "Order Created", 
-                            f"Product: {product['nama']}, Status: {status}, Priority: {prioritas}")]
-                        
+                         initial_history = [add_history_entry(f"{new_order_id}-P{prod_idx+1}", "Order Created", 
+                        f"Product: {product['nama']}, Status: {status}, Priority: {prioritas}")]
+                       
+                        # ===== MODIFIKASI DI SINI =====
+                        # 1. Inisialisasi tracking (semua stage qty = 0)
+                        tracking_data = init_tracking_data()
+                    
+                        # 2. Tempatkan Qty total di stage pertama
+                        first_stage = get_tracking_stages()[0] # "Pre Order"
+                        tracking_data[first_stage]["qty"] = product["qty"]
+                    
+                        # ===== AKHIR MODIFIKASI =====
                         # Create order data for each product
                         order_data = {
-                            "Order ID": f"{new_order_id}-P{prod_idx+1}",  # Add product index
+                            "Order ID": f"{new_order_id}-P{prod_idx+1}", # Add product index
                             "Order Date": order_date,
                             "Buyer": buyer,
                             "Produk": product["nama"],
-                            "Qty": product["qty"],
+                            "Qty": product["qty"], # Ini adalah Qty TOTAL
                             "Material": product["material"],
                             "Finishing": product["finishing"],
                             "Ukuran": product["ukuran"],
@@ -830,11 +901,11 @@ elif st.session_state["menu"] == "Input":
                             "Due Date": due_date,
                             "Prioritas": prioritas,
                             "Status": status,
-                            "Progress": "0%",
-                            "Proses Saat Ini": "Pre Order",
+                            "Progress": "0%", # Awalnya 0%
+                            "Proses Saat Ini": first_stage, # Awalnya di stage pertama
                             "Keterangan": product["keterangan"],
                             "Image Path": image_path if image_path else "",
-                            "Tracking": json.dumps(init_tracking_data(f"{new_order_id}-P{prod_idx+1}")),
+                            "Tracking": json.dumps(tracking_data), # Simpan data tracking Qty BARU
                             "History": json.dumps(initial_history)
                         }
                         
@@ -974,232 +1045,216 @@ elif st.session_state["menu"] == "Orders":
     else:
         st.info("📝 Belum ada order yang diinput.")
 
-# ===== MENU: UPDATE PROGRESS =====
+# ===== MENU: UPDATE PROGRESS (SISTEM QTY PARSIAL BARU) =====
 elif st.session_state["menu"] == "Progress":
-    st.header("⚙️ UPDATE PROGRESS PRODUKSI")
+    st.header("⚙️ UPDATE PROGRESS PRODUKSI (Partial Qty)")
     
     df = st.session_state["data_produksi"]
     
-    with st.container():
-        st.markdown("""
-        <style>
-        .label-row {
-            display: flex;
-            align-items: center;
-            height: 38px;
-            margin-bottom: 18px;
-            font-weight: bold;
-        }
-        .progress-slider-label {
-            display: flex;
-            align-items: center;
-            height: 38px;
-            margin-bottom: 10px;
-            margin-top: 10px;
-            font-weight: bold;
-        }
-        .progress-textarea-label {
-            display: flex;
-            align-items: flex-start;
-            padding-top: 8px;
-            margin-bottom: 10px;
-            font-weight: bold;
-        }
-        </style>
-        """, unsafe_allow_html=True)
+    # Mapping progress berdasarkan stage (untuk kalkulasi otomatis)
+    stage_to_progress = {
+        "Pre Order": 0,
+        "Order di Supplier": 10,
+        "Warehouse": 20,
+        "Fitting 1": 30,
+        "Amplas": 40,
+        "Revisi 1": 50,
+        "Spray": 60,
+        "Fitting 2": 70,
+        "Revisi Fitting 2": 80,
+        "Packaging": 90,
+        "Pengiriman": 100
+    }
+    stages_list = get_tracking_stages()
+
+    # Format: ORDER ID | BUYER | PRODUK | PROSES SAAT INI
+    order_options = [f"{row['Order ID']} | {row['Buyer']} | {row['Produk']} | {row['Proses Saat Ini']}" for idx, row in df.iterrows()]
+    
+    default_idx = 0
+    if "edit_order_idx" in st.session_state:
+        edit_order_id = df.iloc[st.session_state["edit_order_idx"]]["Order ID"]
+        for i, opt in enumerate(order_options):
+            if opt.startswith(edit_order_id):
+                default_idx = i
+                break
+        del st.session_state["edit_order_idx"]
+    
+    selected_option = st.selectbox("📦 Pilih Order untuk Update", order_options, index=default_idx, key="select_order_update_partial")
+    
+    if not selected_option:
+        st.info("📝 Belum ada order untuk diupdate.")
+    else:
+        selected_order_id = selected_option.split(" | ")[0]
+        order_data = df[df["Order ID"] == selected_order_id].iloc[0]
+        order_idx = df[df["Order ID"] == selected_order_id].index[0]
         
-        # Format: ORDER ID | BUYER
-        order_options = [f"{row['Order ID']} | {row['Buyer']} | {row['Produk']} | {row['Progress']}" for idx, row in df.iterrows()]
+        # Ambil data Qty total
+        total_order_qty = order_data["Qty"]
         
-        default_idx = 0
-        if "edit_order_idx" in st.session_state:
-            edit_order_id = df.iloc[st.session_state["edit_order_idx"]]["Order ID"]
-            for i, opt in enumerate(order_options):
-                if opt.startswith(edit_order_id):
-                    default_idx = i
-                    break
-            del st.session_state["edit_order_idx"]
+        # Muat data tracking Qty
+        try:
+            tracking_data = json.loads(order_data["Tracking"])
+            # Pastikan semua stage ada
+            for stage in stages_list:
+                if stage not in tracking_data:
+                    tracking_data[stage] = {"qty": 0}
+        except:
+            st.error("Format data tracking rusak! Membuat ulang...")
+            tracking_data = init_tracking_data()
+            # Coba pulihkan
+            tracking_data[order_data["Proses Saat Ini"]] = {"qty": total_order_qty}
         
-        # Get selected order data first to show progress overview
-        selected_option = order_options[default_idx]
-        selected_order = selected_option.split(" | ")[0]
+        st.markdown("---")
         
-        if selected_order:
-            order_data = df[df["Order ID"] == selected_order].iloc[0]
-            order_idx = df[df["Order ID"] == selected_order].index[0]
-            
-            # Get current progress value first
-            current_saved_progress = int(order_data["Progress"].rstrip('%')) if order_data["Progress"] else 0
-            
-            # 3. Pilih Order - tepat di atas form
-            st.markdown("### 📦 Pilih Order untuk Update")
-            selected_option = st.selectbox("", order_options, index=default_idx, label_visibility="collapsed", key="select_order_update")
-            selected_order = selected_option.split(" | ")[0]
-            
-            # Reload order data if selection changed
-            order_data = df[df["Order ID"] == selected_order].iloc[0]
-            order_idx = df[df["Order ID"] == selected_order].index[0]
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            
-            # Update Form - Rapikan dengan spacing yang lebih baik
-            progress_col1, progress_col2 = st.columns([1, 3])
-            
-            with progress_col1:
-                st.markdown("<div class='label-row'>Product</div>", unsafe_allow_html=True)
-                st.markdown("<div class='label-row'>Proses Saat Ini</div>", unsafe_allow_html=True)
-                st.markdown("<div class='progress-slider-label'>Persentase Progress</div>", unsafe_allow_html=True)
-                st.markdown("<div style='height: 80px;'></div>", unsafe_allow_html=True)  # Spacer untuk slider
-                st.markdown("<div class='progress-textarea-label'></div>", unsafe_allow_html=True)
-            
-            with progress_col2:
-                st.text_input("", value=order_data["Produk"], disabled=True, label_visibility="collapsed", key=f"produk_{selected_order}")
-                
-                proses_list = get_tracking_stages()
-                current_proses_idx = proses_list.index(order_data["Proses Saat Ini"]) if order_data["Proses Saat Ini"] in proses_list else 0
-                
-                current_proses = st.selectbox("", proses_list, 
-                                              index=current_proses_idx,
-                                              label_visibility="collapsed",
-                                              key=f"proses_{selected_order}")
-                
-                # Mapping progress berdasarkan stage
-                stage_to_progress = {
-                    "Pre Order": 0,
-                    "Order di Supplier": 10,
-                    "Warehouse": 20,
-                    "Fitting 1": 30,
-                    "Amplas": 40,
-                    "Revisi 1": 50,
-                    "Spray": 60,
-                    "Fitting 2": 70,
-                    "Revisi Fitting 2": 80,
-                    "Packaging": 90,
-                    "Pengiriman": 100
-                }
-                
-                auto_progress = stage_to_progress.get(current_proses, 0)
-                current_saved_progress = int(order_data["Progress"].rstrip('%')) if order_data["Progress"] else 0
-                
-                if auto_progress != current_saved_progress:
-                    st.info(f"💡 Progress otomatis: {auto_progress}% untuk tahap '{current_proses}'")
-                
-                use_manual_progress = st.checkbox("Override progress manual", value=False, 
-                                                 key=f"manual_{selected_order}",
-                                                 help="Centang jika ingin mengatur progress secara manual")
-                
-                if use_manual_progress:
-                    progress_value = st.slider("", 0, 100, current_saved_progress, 
-                                       label_visibility="collapsed",
-                                       key=f"slider_{selected_order}",
-                                       help="Slide untuk mengatur progress manual")
-                else:
-                    progress_value = auto_progress
-                    st.slider("", 0, 100, progress_value, label_visibility="collapsed", 
-                            disabled=True, 
-                            key=f"slider_auto_{selected_order}",
-                            help="Progress otomatis berdasarkan tahapan proses")
-                
-                if progress_value == 100:
-                    progress_color = "#10B981"
-                elif progress_value >= 50:
-                    progress_color = "#3B82F6"
-                elif progress_value >= 25:
-                    progress_color = "#F59E0B"
-                else:
-                    progress_color = "#EF4444"
-                    
-                st.markdown(f"<h2 style='color: {progress_color}; margin-top: -15px; margin-bottom: 20px;'>{progress_value}%</h2>", unsafe_allow_html=True)
-                
-                notes = st.text_area("", value="", 
-                                    placeholder="Masukkan catatan update (opsional)...", 
-                                    label_visibility="collapsed", 
-                                    key=f"notes_{selected_order}",
-                                    height=100)
-            
-            st.markdown("")
-            
-            with st.expander("ℹ️ Lihat Mapping Progress per Tahapan"):
-                st.markdown("""
-                | Tahapan | Progress |
-                |---------|----------|
-                | Pre Order | 0% |
-                | Order di Supplier | 10% |
-                | Warehouse | 20% |
-                | Fitting 1 | 30% |
-                | Amplas | 40% |
-                | Revisi 1 | 50% |
-                | Spray | 60% |
-                | Fitting 2 | 70% |
-                | Revisi Fitting 2 | 80% |
-                | Packaging | 90% |
-                | Pengiriman | 100% |
-                """)
-            
-            btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 2])
-            
-            with btn_col1:
-                if st.button("🔄 RESET", use_container_width=True):
-                    st.rerun()
-            
-            with btn_col2:
-                if st.button("💾 SAVE PROGRESS", use_container_width=True, type="primary"):
-                    # Get current history
-                    try:
-                        history = json.loads(order_data["History"]) if order_data["History"] else []
-                    except:
-                        history = []
-                    
-                    # Add new history entry
-                    update_details = f"Progress: {order_data['Progress']} → {progress_value}%, Proses: {order_data['Proses Saat Ini']} → {current_proses}"
-                    if notes:
-                        update_details += f", Note: {notes}"
-                    
-                    history.append(add_history_entry(selected_order, "Progress Updated", update_details))
-                    
-                    # Update data
-                    st.session_state["data_produksi"].at[order_idx, "Progress"] = f"{progress_value}%"
-                    st.session_state["data_produksi"].at[order_idx, "Proses Saat Ini"] = current_proses
-                    st.session_state["data_produksi"].at[order_idx, "History"] = json.dumps(history)
-                    
-                    # Update keterangan if notes provided
-                    if notes:
-                        current_keterangan = str(order_data["Keterangan"]) if order_data["Keterangan"] else ""
-                        new_keterangan = f"{current_keterangan}\n[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}] {notes}".strip()
-                        st.session_state["data_produksi"].at[order_idx, "Keterangan"] = new_keterangan
-                    
-                    if save_data(st.session_state["data_produksi"]):
-                        new_tracking = get_tracking_status_from_progress(f"{progress_value}%", order_data["Status"])
-                        st.success(f"✅ Progress order {selected_order} berhasil diupdate! Tracking Status: {new_tracking}")
-                        st.balloons()
-                        st.rerun()
-            
-            # History Section
-            st.markdown("---")
-            st.subheader("📜 Riwayat Update")
-            
-            try:
-                history = json.loads(order_data["History"]) if order_data["History"] else []
-            except:
-                history = []
-            
-            if history:
-                for entry in reversed(history[-10:]):  # Show last 10 entries
-                    timestamp = entry.get("timestamp", "")
-                    action = entry.get("action", "")
-                    details = entry.get("details", "")
-                    
-                    st.markdown(f"""
-                    <div style='background-color: #1F2937; padding: 10px; border-radius: 5px; margin: 5px 0; border-left: 3px solid #3B82F6;'>
-                        <strong style='color: #60A5FA;'>⏱️ {timestamp}</strong><br>
-                        <strong style='color: #10B981;'>{action}</strong><br>
-                        <span style='color: #D1D5DB;'>{details}</span>
-                    </div>
-                    """, unsafe_allow_html=True)
-            else:
-                st.info("Belum ada riwayat update untuk order ini")
+        # ===== TAMPILKAN POSISI QTY SAAT INI =====
+        st.subheader("📍 Posisi Qty Saat Ini")
+        st.info(f"Total Qty untuk Order Ini: **{total_order_qty} pcs**")
+        
+        cols = st.columns(3)
+        col_idx = 0
+        qty_in_progress = 0
+        for stage in stages_list:
+            qty = tracking_data.get(stage, {}).get("qty", 0)
+            if qty > 0:
+                with cols[col_idx % 3]:
+                    st.metric(f"**{stage}**", f"{qty} pcs")
+                col_idx += 1
+                qty_in_progress += qty
+        
+        if qty_in_progress != total_order_qty:
+            st.warning(f"Data Qty tidak sinkron! Qty terlacak: {qty_in_progress}, Total Qty Order: {total_order_qty}")
+        
+        st.markdown("---")
+
+        # ===== FORM UNTUK MEMINDAHKAN QTY =====
+        st.subheader("🚚 Pindahkan Qty ke Workstation Berikutnya")
+        
+        # Ambil daftar stage yang memiliki Qty > 0
+        stages_with_qty = [stage for stage, data in tracking_data.items() if data.get("qty", 0) > 0]
+        
+        if not stages_with_qty:
+            st.warning("Semua Qty sudah 'Selesai' atau belum ada Qty di workstation manapun.")
         else:
-            st.info("📝 Belum ada order untuk diupdate.")
+            with st.form("move_qty_form"):
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    from_stage = st.selectbox("Pindahkan DARI", stages_with_qty, help="Hanya workstation yang memiliki Qty")
+                
+                with col2:
+                    # Tentukan max Qty berdasarkan pilihan 'from_stage'
+                    max_qty_available = tracking_data.get(from_stage, {}).get("qty", 0)
+                    qty_to_move = st.number_input(f"Jumlah Qty (Max: {max_qty_available})", 
+                                                  min_value=1, 
+                                                  max_value=max_qty_available, 
+                                                  value=max_qty_available,
+                                                  help="Qty yang akan dipindahkan")
+                
+                with col3:
+                    # Pilihan 'KE' adalah semua stage SETELAH 'dari'
+                    try:
+                        from_stage_index = stages_list.index(from_stage)
+                        available_to_stages = stages_list[from_stage_index + 1:]
+                    except:
+                        available_to_stages = stages_list # Fallback
+                        
+                    to_stage = st.selectbox("Pindahkan KE", available_to_stages, help="Workstation tujuan")
+
+                notes = st.text_area("Catatan Update (Opsional)", placeholder="Misal: 5 pcs selesai, 1 pcs perlu revisi...")
+                
+                submit_move = st.form_submit_button("💾 Pindahkan Qty", type="primary", use_container_width=True)
+                
+                if submit_move:
+                    if not to_stage:
+                        st.error("Pilih workstation tujuan!")
+                    else:
+                        # ===== LOGIKA PENYIMPANAN BARU =====
+                        
+                        # 1. Update data tracking JSON
+                        tracking_data[from_stage]["qty"] -= qty_to_move
+                        tracking_data[to_stage]["qty"] += qty_to_move
+                        
+                        # 2. Hitung ulang "Proses Saat Ini"
+                        # "Proses Saat Ini" adalah workstation paling AWAL yang masih punya Qty
+                        new_proses_saat_ini = "Selesai" # Default jika semua 0
+                        for stage in stages_list:
+                            if tracking_data.get(stage, {}).get("qty", 0) > 0:
+                                new_proses_saat_ini = stage
+                                break # Temukan yang pertama dan berhenti
+                        
+                        # 3. Hitung ulang "Progress"
+                        # Progress adalah rata-rata tertimbang dari Qty di setiap tahap
+                        total_progress_score = 0
+                        for stage, data in tracking_data.items():
+                            qty_in_stage = data.get("qty", 0)
+                            progress_per_stage = stage_to_progress.get(stage, 0)
+                            total_progress_score += (qty_in_stage * progress_per_stage)
+                        
+                        # Jika total Qty 0, progress 0
+                        if total_order_qty > 0:
+                            new_progress_percent = total_progress_score / total_order_qty
+                        else:
+                            new_progress_percent = 0
+
+                        # Jika semua Qty ada di "Pengiriman", set 100%
+                        if tracking_data["Pengiriman"]["qty"] == total_order_qty:
+                            new_progress_percent = 100
+                            new_proses_saat_ini = "Pengiriman"
+
+                        # 4. Tambahkan ke History
+                        try:
+                            history = json.loads(order_data["History"]) if order_data["History"] else []
+                        except:
+                            history = []
+                        
+                        update_details = f"Memindahkan {qty_to_move} pcs dari {from_stage} ke {to_stage}. "
+                        update_details += f"Progress baru: {new_progress_percent:.0f}%, "
+                        update_details += f"Proses utama: {new_proses_saat_ini}"
+                        if notes:
+                            update_details += f", Note: {notes}"
+                        
+                        history.append(add_history_entry(selected_order_id, "Partial Qty Moved", update_details))
+                        
+                        # 5. Simpan semua data baru ke DataFrame
+                        st.session_state["data_produksi"].at[order_idx, "Tracking"] = json.dumps(tracking_data)
+                        st.session_state["data_produksi"].at[order_idx, "Proses Saat Ini"] = new_proses_saat_ini
+                        st.session_state["data_produksi"].at[order_idx, "Progress"] = f"{new_progress_percent:.0f}%"
+                        st.session_state["data_produksi"].at[order_idx, "History"] = json.dumps(history)
+
+                        # Tambahkan catatan ke Keterangan
+                        if notes:
+                            current_keterangan = str(order_data["Keterangan"]) if order_data["Keterangan"] else ""
+                            new_keterangan = f"{current_keterangan}\n[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}] {notes}".strip()
+                            st.session_state["data_produksi"].at[order_idx, "Keterangan"] = new_keterangan
+                        
+                        # 6. Save ke file & Rerun
+                        if save_data(st.session_state["data_produksi"]):
+                            st.success(f"✅ Berhasil memindahkan {qty_to_move} pcs dari {from_stage} ke {to_stage}!")
+                            st.balloons()
+                            st.rerun()
+                        else:
+                            st.error("Gagal menyimpan data!")
+
+        # Tampilkan History
+        st.markdown("---")
+        st.subheader("📜 Riwayat Update")
+        
+        try:
+            history = json.loads(order_data["History"]) if order_data["History"] else []
+        except:
+            history = []
+        
+        if history:
+            for entry in reversed(history[-10:]): # Show last 10 entries
+                st.markdown(f"""
+                <div style='background-color: #1F2937; padding: 10px; border-radius: 5px; margin: 5px 0; border-left: 3px solid #3B82F6;'>
+                    <strong style='color: #60A5FA;'>⏱️ {entry.get("timestamp", "")}</strong><br>
+                    <strong style='color: #10B981;'>{entry.get("action", "")}</strong><br>
+                    <span style='color: #D1D5DB;'>{entry.get("details", "")}</span>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("Belum ada riwayat update untuk order ini")
             
 # ===== MENU: TRACKING PRODUKSI (VERSI BARU) =====
 elif st.session_state["menu"] == "Tracking":
