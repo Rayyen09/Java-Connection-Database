@@ -1201,9 +1201,9 @@ elif st.session_state["menu"] == "Progress":
         else:
             st.info("📝 Belum ada order untuk diupdate.")
             
-# ===== MENU: TRACKING PRODUKSI =====
+# ===== MENU: TRACKING PRODUKSI (VERSI BARU) =====
 elif st.session_state["menu"] == "Tracking":
-    st.header("🔍 TRACKING PRODUKSI")
+    st.header("🔍 TRACKING PRODUKSI PER WORKSTATION")
     
     df = st.session_state["data_produksi"]
     
@@ -1253,86 +1253,96 @@ elif st.session_state["menu"] == "Tracking":
         
         st.markdown("---")
         
-        # Table view - Flat list of all orders
-        st.subheader("📋 All Orders with Stage Details")
+        # ===== MODIFIKASI DIMULAI DI SINI =====
         
-        # Header
-        header_cols = st.columns([1, 1, 1, 1.5, 0.6, 1.2, 0.9, 1])
-        header_cols[0].markdown("**Order ID**")
-        header_cols[1].markdown("**Buyer**")
-        header_cols[2].markdown("**Produk**")
-        header_cols[3].markdown("**Current Stage**")
-        header_cols[4].markdown("**Qty**")
-        header_cols[5].markdown("**Due Date**")
-        header_cols[6].markdown("**Progress**")
-        header_cols[7].markdown("**Tracking**")
+        st.subheader("📋 Workstation WIP (Work in Progress)")
+
+        st.info("""
+        Tampilan ini menunjukkan total Qty (WIP) dari order yang **"On Going"** atau **"Pending"** yang berada di tahap ini atau tahap-tahap sebelumnya (sesuai permintaan Anda untuk mencegah ambiguitas).
         
-        # Sort by current stage order
+        **Penting:** Sistem saat ini mengasumsikan **seluruh Qty order** (misal, 20 pcs) bergerak bersamaan sebagai satu unit. 
+        Menu "Update Progress" saat ini **belum mendukung** input Qty parsial (misal, 5 dari 20 pcs) yang pindah ke tahap selanjutnya. 
+        
+        Jika Anda memerlukan fitur tracking Qty parsial, diperlukan modifikasi lebih lanjut pada menu "Update Progress" dan struktur database.
+        """)
+
         stages = get_tracking_stages()
-        df_track_filtered['Stage_Order'] = df_track_filtered['Proses Saat Ini'].apply(
-            lambda x: stages.index(x) if x in stages else 999
-        )
-        df_track_filtered = df_track_filtered.sort_values(['Stage_Order', 'Order Date'])
         
-        for idx, row in df_track_filtered.iterrows():
-            order_cols = st.columns([1, 1, 1, 1.5, 0.6, 1.2, 0.9, 1])
-            
-            order_cols[0].write(row['Order ID'])
-            order_cols[1].write(row['Buyer'])
-            order_cols[2].write(row['Produk'][:20] + "..." if len(row['Produk']) > 20 else row['Produk'])
-            
-            # Current stage with icon
-            stage_idx = stages.index(row['Proses Saat Ini']) if row['Proses Saat Ini'] in stages else -1
-            stage_display = f"**{stage_idx + 1}. {row['Proses Saat Ini']}**" if stage_idx >= 0 else row['Proses Saat Ini']
-            order_cols[3].markdown(stage_display)
-            
-            order_cols[4].write(f"{row['Qty']} pcs")
-            
-            # Due date with color
-            due_date = row['Due Date']
-            days_until_due = (due_date - datetime.date.today()).days
-            if days_until_due < 0:
-                date_color = "#EF4444"
-                date_icon = "🔴"
-            elif days_until_due <= 7:
-                date_color = "#F59E0B"
-                date_icon = "🟡"
-            else:
-                date_color = "#10B981"
-                date_icon = "🟢"
-            order_cols[5].markdown(f"<span style='color: {date_color};'>{date_icon} {str(due_date)}</span>", unsafe_allow_html=True)
-            
-            # Progress bar
-            try:
-                progress_pct = int(row['Progress'].rstrip('%')) if row['Progress'] else 0
-            except:
-                progress_pct = 0
-            
-            order_cols[6].progress(progress_pct / 100)
-            
-            # Tracking status
-            tracking_status = get_tracking_status_from_progress(row['Progress'], row['Status'])
-            tracking_colors = {
-                "Pending": ("⏳", "#6B7280"),
-                "On Going": ("🔄", "#3B82F6"),
-                "Done": ("✅", "#10B981")
-            }
-            track_icon, track_color = tracking_colors.get(tracking_status, ("⚪", "#6B7280"))
-            order_cols[7].markdown(f"<span style='color: {track_color}; font-weight: bold;'>{track_icon} {tracking_status}</span>", unsafe_allow_html=True)
-            
-            # Expandable details
-            with st.expander(f"📝 Details: {row['Order ID']}", expanded=False):
-                detail_col1, detail_col2 = st.columns(2)
-                with detail_col1:
-                    st.markdown(f"**Order Date:** {row['Order Date']}")
-                    st.markdown(f"**Status:** {row['Status']}")
-                    st.markdown(f"**Priority:** {row['Prioritas']}")
-                with detail_col2:
-                    st.markdown(f"**Full Product:** {row['Produk']}")
-                    if row['Keterangan']:
-                        st.markdown(f"**Notes:** {row['Keterangan']}")
+        # Filter hanya untuk order yang Work-in-Progress (WIP)
+        # Yaitu order yang tidak 'Rejected' dan tidak '100%' Done.
+        df_wip = df_track_filtered[
+            (df_track_filtered["Status"] != "Rejected") &
+            (df_track_filtered["Progress"] != "100%")
+        ].copy()
         
-        # Progress Distribution Chart
+        if df_wip.empty:
+            st.warning("Tidak ada order 'On Going' atau 'Pending' yang sesuai dengan filter Anda.")
+        else:
+            cumulative_stages = [] # Untuk melacak tahap-tahap sebelumnya
+            
+            for stage_index, stage in enumerate(stages):
+                cumulative_stages.append(stage)
+                
+                # 1. Hitung Qty KUMULATIF (WIP)
+                # Order yang "Proses Saat Ini" nya ada di tahap ini atau sebelumnya
+                df_cumulative_wip = df_wip[df_wip["Proses Saat Ini"].isin(cumulative_stages)]
+                total_wip_qty = df_cumulative_wip["Qty"].sum()
+                
+                # 2. Hitung Qty DISKRET (Hanya di tahap ini)
+                df_at_this_stage = df_wip[df_wip["Proses Saat Ini"] == stage]
+                qty_at_this_stage = df_at_this_stage["Qty"].sum()
+                order_count_at_stage = len(df_at_this_stage)
+
+                # Tampilkan header workstation dengan metrik
+                st.markdown(f"### {stage_index + 1}. {stage}")
+                
+                metric_col1, metric_col2 = st.columns(2)
+                metric_col1.metric("Total WIP (Kumulatif)", f"{total_wip_qty:,} pcs", 
+                                  help="Total Qty 'On Going'/'Pending' di tahap ini ATAU tahap sebelumnya.")
+                metric_col2.metric("Qty Tepat di Tahap Ini", f"{qty_at_this_stage:,} pcs", f"{order_count_at_stage} orders")
+                
+                # Expander untuk menampilkan daftar order di tahap ini
+                with st.expander(f"Lihat {order_count_at_stage} order yang sedang di tahap '{stage}'", expanded=False):
+                    if not df_at_this_stage.empty:
+                        # Tampilkan detail order yang HANYA ada di tahap ini
+                        for idx, row in df_at_this_stage.sort_values("Due Date").iterrows():
+                            st.markdown(f"**{row['Order ID']}** - {row['Produk']}")
+                            
+                            det_col1, det_col2, det_col3 = st.columns(3)
+                            det_col1.write(f"**Buyer:** {row['Buyer']}")
+                            det_col2.write(f"**Qty:** {row['Qty']} pcs")
+                            
+                            # Due date color
+                            due_date = row['Due Date']
+                            days_until_due = (due_date - datetime.date.today()).days
+                            if days_until_due < 0:
+                                date_color = "#EF4444"
+                                date_icon = "🔴"
+                            elif days_until_due <= 7:
+                                date_color = "#F59E0B"
+                                date_icon = "🟡"
+                            else:
+                                date_color = "#10B981"
+                                date_icon = "🟢"
+                            det_col3.markdown(f"**Due:** <span style='color: {date_color};'>{date_icon} {str(due_date)}</span>", unsafe_allow_html=True)
+                            
+                            st.progress(int(row['Progress'].rstrip('%')) / 100)
+                            
+                            # Tombol untuk edit cepat
+                            if st.button("⚙️ Update Progress", key=f"track_edit_{idx}", use_container_width=True, type="secondary"):
+                                st.session_state["edit_order_idx"] = idx
+                                st.session_state["menu"] = "Progress"
+                                st.rerun()
+                                
+                            st.divider()
+                    else:
+                        st.write(f"Tidak ada order yang sedang 'On Going'/'Pending' tepat di tahap {stage}.")
+                
+                st.markdown("---") # Separator visual antar workstation
+
+        # ===== MODIFIKASI BERAKHIR DI SINI =====
+
+        # Progress Distribution Chart (Tetap ada)
         st.markdown("---")
         st.subheader("📈 Distribution by Process Stage")
         
@@ -1347,7 +1357,7 @@ elif st.session_state["menu"] == "Tracking":
         )
         st.plotly_chart(fig_stage, use_container_width=True)
         
-        # Timeline alerts
+        # Timeline alerts (Tetap ada)
         st.markdown("---")
         st.subheader("⚠️ Timeline Alerts")
         
