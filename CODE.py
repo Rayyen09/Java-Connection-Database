@@ -1166,13 +1166,106 @@ elif st.session_state["menu"] == "Progress":
 
                 notes = st.text_area("Catatan Update (Opsional)", placeholder="Misal: 5 pcs selesai, 1 pcs perlu revisi...")
                 
-                submit_move = st.form_submit_button("💾 Pindahkan Qty", type="primary", use_container_width=True)
+                # --- START MODIFIKASI KONFIRMASI ---
                 
+                # 1. Buat key unik untuk session state konfirmasi
+                confirm_key = f"confirm_move_{selected_order_id}"
+                
+                # 2. Tentukan label dan tipe tombol berdasarkan status konfirmasi
+                if st.session_state.get(confirm_key, False):
+                    button_label = "⚠️ KLIK LAGI UNTUK KONFIRMASI"
+                    button_type = "primary" # Anda bisa ganti ke "danger" jika ingin warna merah
+                else:
+                    button_label = "💾 Pindahkan Qty"
+                    button_type = "primary"
+
+                # 3. Render tombol
+                submit_move = st.form_submit_button(button_label, type=button_type, use_container_width=True)
+                
+                # 4. Handle logika klik
                 if submit_move:
-                    if not to_stage:
-                        st.error("Pilih workstation tujuan!")
+                    # JIKA INI ADALAH KLIK KEDUA (KONFIRMASI)
+                    if st.session_state.get(confirm_key, False):
+                        
+                        # Reset state konfirmasi
+                        del st.session_state[confirm_key]
+                        
+                        if not to_stage:
+                            st.error("Pilih workstation tujuan!")
+                        elif not from_stage:
+                             st.error("Pilih workstation asal!")
+                        else:
+                            # ===== LOGIKA PENYIMPANAN BARU (DISALIN DARI KODE LAMA ANDA) =====
+                            
+                            # 1. Update data tracking JSON
+                            tracking_data[from_stage]["qty"] -= qty_to_move
+                            tracking_data[to_stage]["qty"] += qty_to_move
+                            
+                            # 2. Hitung ulang "Proses Saat Ini"
+                            new_proses_saat_ini = "Selesai" # Default jika semua 0
+                            for stage in stages_list:
+                                if tracking_data.get(stage, {}).get("qty", 0) > 0:
+                                    new_proses_saat_ini = stage
+                                    break # Temukan yang pertama dan berhenti
+                            
+                            # 3. Hitung ulang "Progress"
+                            total_progress_score = 0
+                            for stage, data in tracking_data.items():
+                                qty_in_stage = data.get("qty", 0)
+                                progress_per_stage = stage_to_progress.get(stage, 0)
+                                total_progress_score += (qty_in_stage * progress_per_stage)
+                            
+                            if total_order_qty > 0:
+                                new_progress_percent = total_progress_score / total_order_qty
+                            else:
+                                new_progress_percent = 0
+
+                            if tracking_data["Pengiriman"]["qty"] == total_order_qty:
+                                new_progress_percent = 100
+                                new_proses_saat_ini = "Pengiriman"
+
+                            # 4. Tambahkan ke History
+                            try:
+                                history = json.loads(order_data["History"]) if order_data["History"] else []
+                            except:
+                                history = []
+                            
+                            update_details = f"Memindahkan {qty_to_move} pcs dari {from_stage} ke {to_stage}. "
+                            update_details += f"Progress baru: {new_progress_percent:.0f}%, "
+                            update_details += f"Proses utama: {new_proses_saat_ini}"
+                            if notes:
+                                update_details += f", Note: {notes}"
+                            
+                            history.append(add_history_entry(selected_order_id, "Partial Qty Moved", update_details))
+                            
+                            # 5. Simpan semua data baru ke DataFrame
+                            st.session_state["data_produksi"].at[order_idx, "Tracking"] = json.dumps(tracking_data)
+                            st.session_state["data_produksi"].at[order_idx, "Proses Saat Ini"] = new_proses_saat_ini
+                            st.session_state["data_produksi"].at[order_idx, "Progress"] = f"{new_progress_percent:.0f}%"
+                            st.session_state["data_produksi"].at[order_idx, "History"] = json.dumps(history)
+
+                            if notes:
+                                current_keterangan = str(order_data["Keterangan"]) if order_data["Keterangan"] else ""
+                                new_keterangan = f"{current_keterangan}\n[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}] {notes}".strip()
+                                st.session_state["data_produksi"].at[order_idx, "Keterangan"] = new_keterangan
+                            
+                            # 6. Save ke file & Rerun
+                            if save_data(st.session_state["data_produksi"]):
+                                st.success(f"✅ Berhasil memindahkan {qty_to_move} pcs dari {from_stage} ke {to_stage}!")
+                                st.balloons()
+                                st.rerun()
+                            else:
+                                st.error("Gagal menyimpan data!")
+                            
+                            # ===== AKHIR LOGIKA PENYIMPANAN =====
+
+                    # JIKA INI ADALAH KLIK PERTAMA
                     else:
-                        # ===== LOGIKA PENYIMPANAN BARU =====
+                        st.session_state[confirm_key] = True
+                        st.warning("Anda yakin ingin menyimpan perubahan ini? Klik lagi tombol 'KONFIRMASI' untuk melanjutkan.")
+                        st.rerun() # Paksa render ulang untuk mengubah label tombol
+                
+                # --- AKHIR MODIFIKASI KONFIRMASI ---
                         
                         # 1. Update data tracking JSON
                         tracking_data[from_stage]["qty"] -= qty_to_move
