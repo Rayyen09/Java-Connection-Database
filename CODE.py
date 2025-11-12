@@ -859,6 +859,7 @@ elif st.session_state["menu"] == "Input":
     else:
         st.info("📝 Belum ada produk yang ditambahkan. Silakan tambah produk menggunakan form di atas.")
 
+# Menu Daftar Order
 elif st.session_state["menu"] == "Orders":
     st.header("📦 DAFTAR ORDER")
     
@@ -867,17 +868,14 @@ elif st.session_state["menu"] == "Orders":
     if not df.empty:
         df['Tracking Status'] = df.apply(lambda row: get_tracking_status_from_progress(row['Progress'], row['Status']), axis=1)
         
-        col_f1, col_f2, col_f3 = st.columns(3)
+        # Filter options
+        col_f1, col_f2 = st.columns(2)
         with col_f1:
-            filter_buyer = st.multiselect("Filter Buyer", df["Buyer"].unique())
-        with col_f2:
             filter_status = st.multiselect("Filter Status", ["Accepted", "Pending", "Rejected"], default=["Accepted", "Pending"])
-        with col_f3:
+        with col_f2:
             search_order = st.text_input("🔍 Cari Order ID / Produk")
         
         df_filtered = df.copy()
-        if filter_buyer:
-            df_filtered = df_filtered[df_filtered["Buyer"].isin(filter_buyer)]
         if filter_status:
             df_filtered = df_filtered[df_filtered["Status"].isin(filter_status)]
         if search_order:
@@ -887,44 +885,92 @@ elif st.session_state["menu"] == "Orders":
             ]
         
         st.markdown("---")
-        st.info(f"📦 Menampilkan {len(df_filtered)} order")
+        st.info(f"📦 Menampilkan {len(df_filtered)} order dari {df_filtered['Buyer'].nunique()} buyer")
         
-        for idx, row in df_filtered.iterrows():
-            with st.expander(f"📦 {row['Order ID']} - {row['Buyer']} - {row['Produk']}", expanded=False):
-                col1, col2, col3 = st.columns([2, 2, 1])
+        # Group by Buyer
+        buyers = df_filtered["Buyer"].unique()
+        
+        for buyer in sorted(buyers):
+            buyer_orders = df_filtered[df_filtered["Buyer"] == buyer]
+            buyer_count = len(buyer_orders)
+            
+            # Buyer level expander
+            with st.expander(f"👤 **{buyer}** ({buyer_count} orders)", expanded=False):
+                # Group by Order Date
+                buyer_orders['Order Date'] = pd.to_datetime(buyer_orders['Order Date'])
+                buyer_orders = buyer_orders.sort_values('Order Date', ascending=False)
                 
-                with col1:
-                    st.write(f"**Qty:** {row['Qty']} pcs")
-                    st.write(f"**Material:** {row.get('Material', '-')}")
-                    st.write(f"**Finishing:** {row.get('Finishing', '-')}")
-                    st.write(f"**Ukuran:** {row.get('Ukuran', '-')}")
+                # Group orders by date
+                date_groups = buyer_orders.groupby(buyer_orders['Order Date'].dt.date)
                 
-                with col2:
-                    st.write(f"**Packing:** {row.get('Packing', '-')}")
-                    st.write(f"**Due Date:** {row['Due Date']}")
-                    st.write(f"**Status:** {row['Status']}")
-                    st.write(f"**Progress:** {row['Progress']}")
-                
-                with col3:
-                    if row.get('Image Path') and os.path.exists(row['Image Path']):
-                        st.image(row['Image Path'], caption="Product", width=150)
+                for order_date, date_orders in date_groups:
+                    # Calculate relative date label
+                    today = datetime.date.today()
+                    date_diff = (today - order_date).days
+                    
+                    if date_diff == 0:
+                        date_label = "📅 Hari Ini"
+                    elif date_diff == 1:
+                        date_label = "📅 Kemarin"
+                    elif date_diff <= 7:
+                        date_label = f"📅 {date_diff} hari yang lalu"
                     else:
-                        st.info("📷 No image")
-                
-                st.markdown("---")
-                btn_col1, btn_col2 = st.columns(2)
-                with btn_col1:
-                    if st.button("✏️ Edit", key=f"edit_{idx}", use_container_width=True):
-                        st.session_state["edit_order_idx"] = idx
-                        st.session_state["menu"] = "Progress"
-                        st.rerun()
-                with btn_col2:
-                    if st.button("🗑️ Delete", key=f"del_{idx}", use_container_width=True):
-                        st.session_state["data_produksi"].drop(idx, inplace=True)
-                        st.session_state["data_produksi"].reset_index(drop=True, inplace=True)
-                        save_data(st.session_state["data_produksi"])
-                        st.success(f"✅ Order {row['Order ID']} berhasil dihapus!")
-                        st.rerun()
+                        date_label = f"📅 {order_date.strftime('%d %b %Y')}"
+                    
+                    # Date level expander
+                    with st.expander(f"{date_label} ({len(date_orders)} orders)", expanded=False):
+                        # Show each order in this date group
+                        for idx, row in date_orders.iterrows():
+                            # Order level expander
+                            with st.expander(f"📦 {row['Order ID']} - {row['Produk']}", expanded=False):
+                                col1, col2, col3 = st.columns([2, 2, 1])
+                                
+                                with col1:
+                                    st.write(f"**Product:** {row['Produk']}")
+                                    st.write(f"**Qty:** {row['Qty']} pcs")
+                                    st.write(f"**Material:** {row.get('Material', '-')}")
+                                    st.write(f"**Finishing:** {row.get('Finishing', '-')}")
+                                
+                                with col2:
+                                    st.write(f"**Ukuran:** {row.get('Ukuran', '-')}")
+                                    st.write(f"**Packing:** {row.get('Packing', '-')}")
+                                    st.write(f"**Due Date:** {row['Due Date']}")
+                                    st.write(f"**Status:** {row['Status']}")
+                                    st.write(f"**Progress:** {row['Progress']}")
+                                    st.write(f"**Proses:** {row['Proses Saat Ini']}")
+                                
+                                with col3:
+                                    if row.get('Image Path') and os.path.exists(row['Image Path']):
+                                        st.image(row['Image Path'], caption="Product", width=150)
+                                    else:
+                                        st.info("📷 No image")
+                                
+                                # Additional info
+                                if row['Keterangan'] and row['Keterangan'] != '-':
+                                    st.markdown("---")
+                                    st.markdown(f"**📝 Keterangan:**")
+                                    st.text_area("", value=row['Keterangan'], height=100, disabled=True, label_visibility="collapsed", key=f"ket_{idx}")
+                                
+                                st.markdown("---")
+                                btn_col1, btn_col2 = st.columns(2)
+                                with btn_col1:
+                                    if st.button("✏️ Edit Progress", key=f"edit_{idx}", use_container_width=True, type="primary"):
+                                        st.session_state["edit_order_idx"] = idx
+                                        st.session_state["menu"] = "Progress"
+                                        st.rerun()
+                                with btn_col2:
+                                    if st.button("🗑️ Delete Order", key=f"del_{idx}", use_container_width=True, type="secondary"):
+                                        if st.session_state.get(f"confirm_delete_{idx}", False):
+                                            st.session_state["data_produksi"].drop(idx, inplace=True)
+                                            st.session_state["data_produksi"].reset_index(drop=True, inplace=True)
+                                            save_data(st.session_state["data_produksi"])
+                                            st.success(f"✅ Order {row['Order ID']} berhasil dihapus!")
+                                            del st.session_state[f"confirm_delete_{idx}"]
+                                            st.rerun()
+                                        else:
+                                            st.session_state[f"confirm_delete_{idx}"] = True
+                                            st.warning("⚠️ Klik sekali lagi untuk konfirmasi hapus!")
+                                            st.rerun()
     else:
         st.info("📝 Belum ada order yang diinput.")
 
