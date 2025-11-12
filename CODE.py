@@ -1415,6 +1415,7 @@ elif st.session_state["menu"] == "Tracking":
         stage_wip_data = {stage: {"total_qty": 0, "orders": []} for stage in stages}
         
         # Filter hanya untuk order yang Work-in-Progress (WIP)
+        # Kita ambil semua yang tidak Ditolak, karena yang 100% pun perlu dihitung
         df_wip = df_track_filtered[
             (df_track_filtered["Status"] != "Rejected")
         ].copy()
@@ -1426,17 +1427,24 @@ elif st.session_state["menu"] == "Tracking":
             for idx, row in df_wip.iterrows():
                 try:
                     tracking_data = json.loads(row["Tracking"])
+                    # Pastikan data tracking tidak kosong
+                    if not tracking_data:
+                        raise ValueError("Tracking data is empty")
+                        
                     for stage in stages:
+                        # Ambil Qty dari JSON
                         qty_in_stage = tracking_data.get(stage, {}).get("qty", 0)
                         if qty_in_stage > 0:
                             stage_wip_data[stage]["total_qty"] += qty_in_stage
                             stage_wip_data[stage]["orders"].append((row, qty_in_stage))
-                except:
-                    # Fallback untuk data lama/rusak (PASCA MIGRASI SEHARUSNYA TIDAK TERJADI)
+                except Exception as e:
+                    # Fallback jika data Tracking rusak atau masih format lama
                     current_stage = row["Proses Saat Ini"]
                     if current_stage in stage_wip_data:
-                        stage_wip_data[current_stage]["total_qty"] += row["Qty"]
-                        stage_wip_data[current_stage]["orders"].append((row, row["Qty"]))
+                        # Hanya tambahkan jika belum 100% (data lama)
+                        if get_tracking_status_from_progress(row['Progress'], row['Status']) != "Done":
+                            stage_wip_data[current_stage]["total_qty"] += row["Qty"]
+                            stage_wip_data[current_stage]["orders"].append((row, row["Qty"]))
 
             # Tampilkan per workstation
             cumulative_qty = 0
@@ -1454,12 +1462,15 @@ elif st.session_state["menu"] == "Tracking":
                 metric_col1.metric(f"Qty Tepat di Tahap Ini", f"{qty_at_this_stage:,} pcs", 
                                   help=f"Total Qty dari {order_count_at_stage} order yang sebagian/seluruhnya ada di tahap ini.")
                 metric_col2.metric("Total WIP (Kumulatif)", f"{cumulative_qty:,} pcs",
-                                  help="Total Qty 'On Going'/'Pending' di tahap ini ATAU tahap sebelumnya.")
+                                  help="Total Qty di tahap ini ATAU tahap sebelumnya.")
                 
                 # Expander untuk menampilkan daftar order di tahap ini
                 with st.expander(f"Lihat {order_count_at_stage} order di tahap '{stage}'", expanded=False):
                     if order_count_at_stage > 0:
-                        for order_row, qty_in_stage in data["orders"]:
+                        # Urutkan berdasarkan Due Date
+                        sorted_orders = sorted(data["orders"], key=lambda x: x[0]["Due Date"])
+                        
+                        for order_row, qty_in_stage in sorted_orders:
                             row = order_row # agar mudah dibaca
                             st.markdown(f"**{row['Order ID']}** - {row['Produk']}")
                             
@@ -1545,7 +1556,6 @@ elif st.session_state["menu"] == "Tracking":
         
     else:
         st.info("📝 Belum ada order untuk di-tracking.")
-
 # ===== MENU: DATABASE =====
 elif st.session_state["menu"] == "Database":
     st.header("💾 DATABASE MANAGEMENT")
