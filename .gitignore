@@ -37,3 +37,8 @@ Thumbs.db
 
 # Streamlit
 .streamlit/
+
+# Google Drive Credentials (JANGAN COMMIT!)
+credentials.json
+token.pickle
+settings.yaml

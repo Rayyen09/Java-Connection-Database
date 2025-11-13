@@ -6,6 +6,7 @@ import os
 import plotly.express as px
 import plotly.figure_factory as ff
 from streamlit.components.v1 import html
+from gdrive_sync import get_gdrive_sync
 
 # ===== FUNGSI DETEKSI DEVICE =====
 def get_device_type():
@@ -328,7 +329,12 @@ add_mobile_menu_button()
 
 # ===== FUNGSI DATABASE =====
 def load_data():
-    """Memuat data dari file JSON"""
+    """Memuat data dari file JSON dengan sync dari Google Drive"""
+    # Download dari Google Drive jika tersedia
+    gdrive = get_gdrive_sync()
+    if gdrive.enabled:
+        gdrive.download_file(os.path.basename(DATABASE_PATH), DATABASE_PATH)
+
     if os.path.exists(DATABASE_PATH):
         try:
             with open(DATABASE_PATH, 'r', encoding='utf-8') as f:
@@ -344,7 +350,7 @@ def load_data():
         except Exception as e:
             st.error(f"Error loading data: {e}")
     return pd.DataFrame(columns=[
-        "Order ID", "Order Date", "Buyer", "Produk", "Qty", "Due Date", 
+        "Order ID", "Order Date", "Buyer", "Produk", "Qty", "Due Date",
         "Prioritas", "Status", "Progress", "Proses Saat Ini", "Keterangan",
         "Tracking", "History"
     ])
@@ -429,20 +435,31 @@ def migrate_database_structure():
     return False
     
 def save_data(df):
-    """Menyimpan data ke file JSON"""
+    """Menyimpan data ke file JSON dan sync ke Google Drive"""
     try:
         df_copy = df.copy()
         df_copy['Order Date'] = df_copy['Order Date'].astype(str)
         df_copy['Due Date'] = df_copy['Due Date'].astype(str)
         with open(DATABASE_PATH, 'w', encoding='utf-8') as f:
             json.dump(df_copy.to_dict('records'), f, ensure_ascii=False, indent=2)
+
+        # Sync ke Google Drive
+        gdrive = get_gdrive_sync()
+        if gdrive.enabled:
+            gdrive.upload_file(DATABASE_PATH)
+
         return True
     except Exception as e:
         st.error(f"Error saving data: {e}")
         return False
 
 def load_buyers():
-    """Memuat database buyer"""
+    """Memuat database buyer dengan sync dari Google Drive"""
+    # Download dari Google Drive jika tersedia
+    gdrive = get_gdrive_sync()
+    if gdrive.enabled:
+        gdrive.download_file(os.path.basename(BUYER_DB_PATH), BUYER_DB_PATH)
+
     if os.path.exists(BUYER_DB_PATH):
         try:
             with open(BUYER_DB_PATH, 'r', encoding='utf-8') as f:
@@ -465,10 +482,16 @@ def load_buyers():
     ]
 
 def save_buyers(buyers):
-    """Menyimpan database buyer"""
+    """Menyimpan database buyer dan sync ke Google Drive"""
     try:
         with open(BUYER_DB_PATH, 'w', encoding='utf-8') as f:
             json.dump(buyers, f, ensure_ascii=False, indent=2)
+
+        # Sync ke Google Drive
+        gdrive = get_gdrive_sync()
+        if gdrive.enabled:
+            gdrive.upload_file(BUYER_DB_PATH)
+
         return True
     except:
         return False
@@ -479,7 +502,12 @@ def get_buyer_names():
     return [b["name"] for b in buyers]
 
 def load_products():
-    """Memuat database produk"""
+    """Memuat database produk dengan sync dari Google Drive"""
+    # Download dari Google Drive jika tersedia
+    gdrive = get_gdrive_sync()
+    if gdrive.enabled:
+        gdrive.download_file(os.path.basename(PRODUCT_DB_PATH), PRODUCT_DB_PATH)
+
     if os.path.exists(PRODUCT_DB_PATH):
         try:
             with open(PRODUCT_DB_PATH, 'r', encoding='utf-8') as f:
@@ -489,10 +517,16 @@ def load_products():
     return []
 
 def save_products(products):
-    """Menyimpan database produk"""
+    """Menyimpan database produk dan sync ke Google Drive"""
     try:
         with open(PRODUCT_DB_PATH, 'w', encoding='utf-8') as f:
             json.dump(products, f, ensure_ascii=False, indent=2)
+
+        # Sync ke Google Drive
+        gdrive = get_gdrive_sync()
+        if gdrive.enabled:
+            gdrive.upload_file(PRODUCT_DB_PATH)
+
         return True
     except:
         return False
@@ -618,6 +652,13 @@ for label, value in menu_options.items():
 
 st.sidebar.markdown("---")
 st.sidebar.info(f"📁 Database: `{os.path.basename(DATABASE_PATH)}`")
+
+# Google Drive Status Indicator
+gdrive = get_gdrive_sync()
+if gdrive.enabled:
+    st.sidebar.success("☁️ Google Drive Sync: **Aktif**")
+else:
+    st.sidebar.warning("⚠️ Google Drive Sync: **Tidak Aktif**\n\nUpload `credentials.json` untuk mengaktifkan.")
 
 # ===== BACK BUTTON =====
 if st.session_state["menu"] != "Dashboard":
