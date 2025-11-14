@@ -220,6 +220,15 @@ def calculate_cbm(p, l, t):
     except:
         return 0
 
+def get_products_by_buyer(buyer_name):
+    """Get unique products for a specific buyer from orders"""
+    df = st.session_state["data_produksi"]
+    if df.empty or not buyer_name:
+        return []
+    
+    buyer_products = df[df["Buyer"] == buyer_name]["Produk"].unique().tolist()
+    return sorted(buyer_products)
+
 # ===== INISIALISASI =====
 if "data_produksi" not in st.session_state:
     st.session_state["data_produksi"] = load_data()
@@ -1038,12 +1047,21 @@ elif st.session_state["menu"] == "Procurement":
         col_proc1, col_proc2, col_proc3 = st.columns(3)
         
         with col_proc1:
-            proc_nama_produk = st.text_input("Nama Produk", placeholder="Contoh: Lemari 2 Pintu")
-        
-        with col_proc2:
             df = st.session_state["data_produksi"]
             buyers = df["Buyer"].unique().tolist() if not df.empty else []
-            proc_buyer = st.selectbox("Buyer", buyers if buyers else [""])
+            proc_buyer = st.selectbox("Buyer", [""] + buyers if buyers else [""], key="proc_buyer_select")
+        
+        with col_proc2:
+            # Get products based on selected buyer
+            if proc_buyer:
+                buyer_products = get_products_by_buyer(proc_buyer)
+                if buyer_products:
+                    proc_nama_produk = st.selectbox("Nama Produk", [""] + buyer_products, key="proc_product_select")
+                else:
+                    st.info("Buyer ini belum punya order")
+                    proc_nama_produk = st.text_input("Nama Produk (Manual)", placeholder="Ketik nama produk", key="proc_product_manual")
+            else:
+                proc_nama_produk = st.text_input("Nama Produk", placeholder="Pilih buyer terlebih dahulu", disabled=True, key="proc_product_disabled")
         
         with col_proc3:
             proc_tanggal = st.date_input("Tanggal Procurement", datetime.date.today())
@@ -1125,7 +1143,7 @@ elif st.session_state["menu"] == "Procurement":
             
             with col_submit2:
                 if st.button("📤 SUBMIT PROCUREMENT", use_container_width=True, type="primary"):
-                    if proc_nama_produk and st.session_state["procurement_items"]:
+                    if proc_nama_produk and proc_buyer and st.session_state["procurement_items"]:
                         new_procurement = {
                             "nama_produk": proc_nama_produk,
                             "buyer": proc_buyer,
@@ -1145,7 +1163,7 @@ elif st.session_state["menu"] == "Procurement":
                             st.session_state["procurement_items"] = []
                             st.rerun()
                     else:
-                        st.warning("⚠️ Harap isi nama produk dan tambahkan minimal 1 item!")
+                        st.warning("⚠️ Harap pilih buyer, nama produk, dan tambahkan minimal 1 item!")
         else:
             st.info("📝 Belum ada item yang ditambahkan. Silakan tambah item menggunakan form di atas.")
 
@@ -1503,4 +1521,4 @@ elif st.session_state["menu"] == "Gantt":
         st.info("📝 Belum ada data untuk membuat Gantt Chart.")
 
 st.markdown("---")
-st.caption(f"© 2025 PPIC-DSS System | Enhanced with Procurement Module | v7.0")
+st.caption(f"© 2025 PPIC-DSS System | Enhanced with Procurement Module | v7.1")
