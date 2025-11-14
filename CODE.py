@@ -186,12 +186,15 @@ def get_tracking_status_from_progress(progress_str):
     except:
         progress_pct = 0
     
-    if progress_pct == 100:
+    # Updated status: On Going and Done only
+    # On Going: Progress > 0% and < 100%
+    # Done: Progress = 100%
+    if progress_pct >= 100:
         return "Done"
-    elif progress_pct == 0:
-        return "Pending"
-    else:
+    elif progress_pct > 0:
         return "On Going"
+    else:
+        return "On Going"  # Even 0% is considered On Going (Pre Order stage)
 
 def add_history_entry(order_id, action, details):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -295,49 +298,329 @@ if st.session_state["menu"] == "Dashboard":
     df = st.session_state["data_produksi"]
     
     if not df.empty:
+        # Calculate tracking status
         df['Tracking Status'] = df.apply(
             lambda row: get_tracking_status_from_progress(row['Progress']), 
             axis=1
         )
         
-        col1, col2, col3, col4 = st.columns(4)
+        # ===== SECTION 1: KEY METRICS =====
+        st.markdown("### 📈 Key Performance Metrics")
+        
+        col1, col2, col3, col4, col5 = st.columns(5)
         
         total_orders = len(df)
-        pending = len(df[df["Tracking Status"] == "Pending"])
         ongoing = len(df[df["Tracking Status"] == "On Going"])
         done = len(df[df["Tracking Status"] == "Done"])
+        total_qty = df["Qty"].sum()
+        total_buyers = df["Buyer"].nunique()
         
-        col1.metric("📦 Total Orders", total_orders)
-        col2.metric("⏳ Pending", pending)
-        col3.metric("🔄 On Going", ongoing)
-        col4.metric("✅ Done", done)
+        col1.metric("📦 Total Orders", total_orders, help="Total semua order di sistem")
+        col2.metric("🔄 On Going", ongoing, help="Order yang sedang dalam proses")
+        col3.metric("✅ Done", done, help="Order yang sudah selesai dikirim")
+        col4.metric("📊 Total Qty", f"{total_qty:,} pcs", help="Total quantity semua produk")
+        col5.metric("👥 Active Buyers", total_buyers, help="Jumlah buyer aktif")
+        
+        # Completion rate
+        completion_rate = (done / total_orders * 100) if total_orders > 0 else 0
+        st.progress(completion_rate / 100)
+        st.caption(f"🎯 Completion Rate: {completion_rate:.1f}%")
         
         st.markdown("---")
         
-        col_chart1, col_chart2 = st.columns(2)
+        # ===== SECTION 2: CALENDAR & CHARTS =====
+        col_left, col_right = st.columns([2, 1])
         
-        with col_chart1:
-            st.subheader("Progress Distribution")
-            progress_dist = df["Tracking Status"].value_counts()
-            fig1 = px.pie(values=progress_dist.values, names=progress_dist.index, 
-                         title="Tracking Status")
-            st.plotly_chart(fig1, use_container_width=True)
+        with col_left:
+            st.markdown("### 📅 Production Calendar - Due Dates")
+            
+            # Prepare calendar data
+            today = datetime.date.today()
+            current_month = today.month
+            current_year = today.year
+            
+            # Month selector
+            col_month, col_year = st.columns(2)
+            with col_month:
+                months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", 
+                         "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+                selected_month = st.selectbox("Bulan", months, index=current_month - 1, key="cal_month")
+                month_num = months.index(selected_month) + 1
+            
+            with col_year:
+                years = list(range(current_year - 1, current_year + 3))
+                selected_year = st.selectbox("Tahun", years, index=1, key="cal_year")
+            
+            # Filter orders by selected month/year
+            df['Due Date'] = pd.to_datetime(df['Due Date'])
+            df_month = df[(df['Due Date'].dt.month == month_num) & 
+                         (df['Due Date'].dt.year == selected_year)]
+            
+            if not df_month.empty:
+                # Group by date
+                due_dates_grouped = df_month.groupby(df_month['Due Date'].dt.date).agg({
+                    'Order ID': 'count',
+                    'Qty': 'sum',
+                    'Tracking Status': lambda x: list(x)
+                }).reset_index()
+                
+                st.markdown(f"**📌 {len(df_month)} orders jatuh tempo di bulan ini**")
+                
+                # Create calendar view
+                import calendar
+                cal = calendar.monthcalendar(selected_year, month_num)
+                
+                # Create header
+                days = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"]
+                header_cols = st.columns(7)
+                for i, day in enumerate(days):
+                    header_cols[i].markdown(f"**{day}**")
+                
+                # Create calendar grid
+                for week in cal:
+                    week_cols = st.columns(7)
+                    for i, day in enumerate(week):
+                        if day == 0:
+                            week_cols[i].markdown("")
+                        else:
+                            date_obj = datetime.date(selected_year, month_num, day)
+                            
+                            # Check if there are orders on this date
+                            orders_on_date = df_month[df_month['Due Date'].dt.date == date_obj]
+                            
+                            if len(orders_on_date) > 0:
+                                order_count = len(orders_on_date)
+                                qty_count = orders_on_date['Qty'].sum()
+                                
+                                # Determine color based on status
+                                done_count = len(orders_on_date[orders_on_date['Tracking Status'] == 'Done'])
+                                if done_count == order_count:
+                                    bg_color = "#10B981"  # Green - all done
+                                elif date_obj < today:
+                                    bg_color = "#EF4444"  # Red - overdue
+                                elif date_obj == today:
+                                    bg_color = "#F59E0B"  # Orange - today
+                                else:
+                                    bg_color = "#3B82F6"  # Blue - upcoming
+                                
+                                week_cols[i].markdown(f"""
+                                <div style='background-color: {bg_color}; padding: 8px; border-radius: 5px; text-align: center;'>
+                                    <strong style='color: white; font-size: 16px;'>{day}</strong><br>
+                                    <span style='color: white; font-size: 11px;'>{order_count} order</span><br>
+                                    <span style='color: white; font-size: 11px;'>{qty_count} pcs</span>
+                                </div>
+                                """, unsafe_allow_html=True)
+                            else:
+                                # Regular day
+                                if date_obj == today:
+                                    week_cols[i].markdown(f"<div style='padding: 8px; text-align: center; border: 2px solid #3B82F6; border-radius: 5px;'><strong>{day}</strong></div>", unsafe_allow_html=True)
+                                else:
+                                    week_cols[i].markdown(f"<div style='padding: 8px; text-align: center;'>{day}</div>", unsafe_allow_html=True)
+                
+                # Legend
+                st.markdown("---")
+                leg_col1, leg_col2, leg_col3, leg_col4 = st.columns(4)
+                leg_col1.markdown("🔵 **Upcoming** - Orders mendatang")
+                leg_col2.markdown("🟠 **Today** - Jatuh tempo hari ini")
+                leg_col3.markdown("🔴 **Overdue** - Terlambat")
+                leg_col4.markdown("🟢 **Done** - Sudah selesai")
+                
+                # Orders detail for selected month
+                st.markdown("---")
+                st.markdown("### 📋 Detail Orders Bulan Ini")
+                
+                # Sort by due date
+                df_month_sorted = df_month.sort_values('Due Date')
+                
+                for idx, row in df_month_sorted.iterrows():
+                    due_date = row['Due Date'].date()
+                    days_until_due = (due_date - today).days
+                    
+                    if days_until_due < 0:
+                        date_label = f"🔴 Terlambat {abs(days_until_due)} hari"
+                        date_color = "#EF4444"
+                    elif days_until_due == 0:
+                        date_label = "🟠 Hari Ini"
+                        date_color = "#F59E0B"
+                    elif days_until_due <= 7:
+                        date_label = f"🟡 {days_until_due} hari lagi"
+                        date_color = "#F59E0B"
+                    else:
+                        date_label = f"🟢 {days_until_due} hari lagi"
+                        date_color = "#10B981"
+                    
+                    with st.expander(f"{row['Order ID']} - {row['Produk']} | Due: {due_date.strftime('%d %b %Y')} ({date_label})"):
+                        col_detail1, col_detail2 = st.columns(2)
+                        with col_detail1:
+                            st.write(f"**Buyer:** {row['Buyer']}")
+                            st.write(f"**Qty:** {row['Qty']} pcs")
+                            st.write(f"**Progress:** {row['Progress']}")
+                        with col_detail2:
+                            st.write(f"**Prioritas:** {row['Prioritas']}")
+                            st.write(f"**Status:** {row['Tracking Status']}")
+                            st.write(f"**Proses:** {row['Proses Saat Ini']}")
+            else:
+                st.info(f"📅 Tidak ada order yang jatuh tempo di {selected_month} {selected_year}")
         
-        with col_chart2:
-            st.subheader("Priority Distribution")
+        with col_right:
+            st.markdown("### 📊 Status Distribution")
+            
+            # Status pie chart
+            status_dist = df["Tracking Status"].value_counts()
+            fig_status = px.pie(
+                values=status_dist.values, 
+                names=status_dist.index,
+                color_discrete_map={"On Going": "#3B82F6", "Done": "#10B981"},
+                hole=0.4
+            )
+            fig_status.update_traces(textposition='inside', textinfo='percent+label')
+            fig_status.update_layout(showlegend=True, height=300)
+            st.plotly_chart(fig_status, use_container_width=True)
+            
+            st.markdown("### 🎯 Priority Orders")
             priority_dist = df["Prioritas"].value_counts()
-            fig2 = px.pie(values=priority_dist.values, names=priority_dist.index, 
-                         title="Priority Orders")
-            st.plotly_chart(fig2, use_container_width=True)
+            fig_priority = px.bar(
+                x=priority_dist.index, 
+                y=priority_dist.values,
+                color=priority_dist.index,
+                color_discrete_map={"High": "#EF4444", "Medium": "#F59E0B", "Low": "#10B981"}
+            )
+            fig_priority.update_layout(showlegend=False, height=300, xaxis_title="", yaxis_title="Jumlah")
+            st.plotly_chart(fig_priority, use_container_width=True)
         
-        st.subheader("🕒 Recent Orders (Last 10)")
-        recent_df = df.sort_values("Order Date", ascending=False).head(10)
-        st.dataframe(
-            recent_df[["Order ID", "Order Date", "Buyer", "Produk", "Qty", 
-                      "Progress", "Proses Saat Ini"]], 
-            use_container_width=True, 
-            hide_index=True
+        st.markdown("---")
+        
+        # ===== SECTION 3: PRODUCTION PROGRESS =====
+        st.markdown("### 🏭 Production Progress by Stage")
+        
+        # Calculate qty at each stage
+        stages = get_tracking_stages()
+        stage_data = {stage: 0 for stage in stages}
+        
+        for idx, row in df.iterrows():
+            try:
+                tracking_data = json.loads(row["Tracking"])
+                for stage, data in tracking_data.items():
+                    qty = data.get("qty", 0)
+                    if stage in stage_data:
+                        stage_data[stage] += qty
+            except:
+                pass
+        
+        # Create horizontal bar chart
+        fig_stages = px.bar(
+            x=list(stage_data.values()),
+            y=list(stage_data.keys()),
+            orientation='h',
+            color=list(stage_data.values()),
+            color_continuous_scale='Blues'
         )
+        fig_stages.update_layout(
+            xaxis_title="Quantity (pcs)",
+            yaxis_title="",
+            showlegend=False,
+            height=400
+        )
+        st.plotly_chart(fig_stages, use_container_width=True)
+        
+        st.markdown("---")
+        
+        # ===== SECTION 4: TOP PERFORMERS =====
+        col_top1, col_top2 = st.columns(2)
+        
+        with col_top1:
+            st.markdown("### 👑 Top 5 Buyers by Orders")
+            buyer_stats = df.groupby("Buyer").agg({
+                "Order ID": "count",
+                "Qty": "sum"
+            }).rename(columns={"Order ID": "Orders", "Qty": "Total Qty"})
+            buyer_stats = buyer_stats.sort_values("Orders", ascending=False).head(5)
+            
+            for buyer, stats in buyer_stats.iterrows():
+                st.markdown(f"""
+                <div style='background-color: #1F2937; padding: 10px; margin: 5px 0; border-radius: 5px; border-left: 4px solid #3B82F6;'>
+                    <strong style='color: #60A5FA;'>{buyer}</strong><br>
+                    <span style='color: #D1D5DB;'>Orders: {stats['Orders']} | Qty: {stats['Total Qty']:,} pcs</span>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        with col_top2:
+            st.markdown("### 🏆 Top 5 Products by Quantity")
+            product_stats = df.groupby("Produk").agg({
+                "Order ID": "count",
+                "Qty": "sum"
+            }).rename(columns={"Order ID": "Orders"})
+            product_stats = product_stats.sort_values("Qty", ascending=False).head(5)
+            
+            for product, stats in product_stats.iterrows():
+                st.markdown(f"""
+                <div style='background-color: #1F2937; padding: 10px; margin: 5px 0; border-radius: 5px; border-left: 4px solid #10B981;'>
+                    <strong style='color: #34D399;'>{product}</strong><br>
+                    <span style='color: #D1D5DB;'>Orders: {stats['Orders']} | Qty: {stats['Qty']:,} pcs</span>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # ===== SECTION 5: RECENT ACTIVITY =====
+        st.markdown("### 🕒 Recent Orders (Last 10)")
+        recent_df = df.sort_values("Order Date", ascending=False).head(10)
+        
+        # Display as cards
+        for idx, row in recent_df.iterrows():
+            col_card1, col_card2, col_card3, col_card4 = st.columns([2, 2, 1, 1])
+            
+            with col_card1:
+                st.markdown(f"**{row['Order ID']}**")
+                st.caption(f"{row['Buyer']} | {row['Produk']}")
+            
+            with col_card2:
+                st.caption(f"Order: {row['Order Date']}")
+                st.caption(f"Due: {row['Due Date']}")
+            
+            with col_card3:
+                progress_val = int(row['Progress'].rstrip('%'))
+                st.progress(progress_val / 100)
+                st.caption(f"{row['Progress']}")
+            
+            with col_card4:
+                if row['Tracking Status'] == 'Done':
+                    st.success("✅ Done")
+                else:
+                    st.info("🔄 On Going")
+            
+            st.divider()
+        
+        st.markdown("---")
+        
+        # ===== SECTION 6: ALERTS & NOTIFICATIONS =====
+        st.markdown("### ⚠️ Alerts & Notifications")
+        
+        # Check for overdue orders
+        today = datetime.date.today()
+        overdue_orders = df[(df['Due Date'] < today) & (df['Tracking Status'] != 'Done')]
+        
+        if len(overdue_orders) > 0:
+            st.error(f"🚨 **{len(overdue_orders)} orders terlambat!**")
+            for idx, row in overdue_orders.iterrows():
+                days_late = (today - row['Due Date']).days
+                st.markdown(f"- {row['Order ID']} ({row['Buyer']}) - Terlambat {days_late} hari")
+        
+        # Check for due today
+        due_today = df[(df['Due Date'] == today) & (df['Tracking Status'] != 'Done')]
+        if len(due_today) > 0:
+            st.warning(f"⏰ **{len(due_today)} orders jatuh tempo hari ini!**")
+            for idx, row in due_today.iterrows():
+                st.markdown(f"- {row['Order ID']} ({row['Buyer']}) - Progress: {row['Progress']}")
+        
+        # Check for due within 3 days
+        due_soon = df[(df['Due Date'] > today) & (df['Due Date'] <= today + datetime.timedelta(days=3)) & (df['Tracking Status'] != 'Done')]
+        if len(due_soon) > 0:
+            st.info(f"📅 **{len(due_soon)} orders akan jatuh tempo dalam 3 hari**")
+        
+        if len(overdue_orders) == 0 and len(due_today) == 0 and len(due_soon) == 0:
+            st.success("✅ Semua order dalam kondisi baik!")
+        
     else:
         st.info("📝 Belum ada data. Silakan input pesanan baru.")
 
@@ -1712,4 +1995,4 @@ elif st.session_state["menu"] == "Gantt":
         st.info("📝 Belum ada data untuk membuat Gantt Chart.")
 
 st.markdown("---")
-st.caption(f"© 2025 PPIC-DSS System | Enhanced with Procurement Module | v9.5 - Confirmation Safety")
+st.caption(f"© 2025 PPIC-DSS System | Enhanced Dashboard & Calendar | v10.0")
