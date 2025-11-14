@@ -240,9 +240,9 @@ menu_options = {
     "📊 Dashboard": "Dashboard",
     "📋 Input Pesanan Baru": "Input",
     "📦 Daftar Order": "Orders",
+    "🛒 Procurement": "Procurement",
     "⚙️ Update Progress": "Progress",
     "🔍 Tracking Produksi": "Tracking",
-    "🛒 Procurement": "Procurement",
     "💾 Database": "Database",
     "📈 Analisis & Laporan": "Analytics",
     "📊 Gantt Chart": "Gantt"
