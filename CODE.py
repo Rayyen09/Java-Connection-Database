@@ -824,23 +824,13 @@ elif st.session_state["menu"] == "Progress":
                 }
                 stages_list = get_tracking_stages()
 
-                order_options = [f"{row['Order ID']} | {row['Proses Saat Ini']} | Progress: {row['Progress']}" for idx, row in df_filtered.iterrows()]
-                
-                default_idx = 0
-                if "edit_order_idx" in st.session_state:
-                    edit_order_id = df.iloc[st.session_state["edit_order_idx"]]["Order ID"]
-                    for i, opt in enumerate(order_options):
-                        if opt.startswith(edit_order_id):
-                            default_idx = i
-                            break
-                    del st.session_state["edit_order_idx"]
-                
-                selected_option = st.selectbox("3️⃣ Pilih Order Spesifik", order_options, index=default_idx, key="select_order_update")
-                
-                if selected_option:
-                    selected_order_id = selected_option.split(" | ")[0]
-                    order_data = df[df["Order ID"] == selected_order_id].iloc[0]
-                    order_idx = df[df["Order ID"] == selected_order_id].index[0]
+                # Loop through all filtered orders (no dropdown needed)
+                for order_idx_in_filtered, (idx, order_data) in enumerate(df_filtered.iterrows()):
+                    order_id = order_data["Order ID"]
+                    
+                    # Display order info
+                    st.markdown(f"### 📦 Order: {order_id}")
+                    st.info(f"**Buyer:** {order_data['Buyer']} | **Produk:** {order_data['Produk']} | **Qty Total:** {order_data['Qty']} pcs | **Progress:** {order_data['Progress']}")
                     
                     total_order_qty = order_data["Qty"]
                     
@@ -853,10 +843,7 @@ elif st.session_state["menu"] == "Progress":
                         tracking_data = init_tracking_data()
                         tracking_data[order_data["Proses Saat Ini"]] = {"qty": total_order_qty}
                     
-                    st.markdown("---")
-                    
                     st.subheader("📍 Posisi Qty Saat Ini")
-                    st.info(f"Total Qty untuk Order Ini: **{total_order_qty} pcs**")
                     
                     cols = st.columns(3)
                     col_idx = 0
@@ -881,18 +868,20 @@ elif st.session_state["menu"] == "Progress":
                     if not stages_with_qty:
                         st.warning("Semua Qty sudah 'Selesai' atau belum ada Qty di workstation manapun.")
                     else:
-                        with st.form("move_qty_form"):
+                        # Use unique form key for each order
+                        with st.form(f"move_qty_form_{order_id}"):
                             col1, col2, col3 = st.columns(3)
                             
                             with col1:
-                                from_stage = st.selectbox("Pindahkan DARI", stages_with_qty)
+                                from_stage = st.selectbox("Pindahkan DARI", stages_with_qty, key=f"from_stage_{order_id}")
                             
                             with col2:
                                 max_qty_available = tracking_data.get(from_stage, {}).get("qty", 0)
                                 qty_to_move = st.number_input(f"Jumlah Qty (Max: {max_qty_available})", 
                                                               min_value=1, 
                                                               max_value=max_qty_available, 
-                                                              value=max_qty_available)
+                                                              value=max_qty_available,
+                                                              key=f"qty_move_{order_id}")
                             
                             with col3:
                                 # STATIC NEXT WORKSTATION - hanya bisa pilih workstation berikutnya
@@ -909,7 +898,7 @@ elif st.session_state["menu"] == "Progress":
                                 except:
                                     to_stage = stages_list[0]
 
-                            notes = st.text_area("Catatan Update (Opsional)", placeholder="Misal: 5 pcs selesai...")
+                            notes = st.text_area("Catatan Update (Opsional)", placeholder="Misal: 5 pcs selesai...", key=f"notes_{order_id}")
                             
                             submit_move = st.form_submit_button("💾 Pindahkan Qty", type="primary", use_container_width=True)
                             
@@ -952,17 +941,17 @@ elif st.session_state["menu"] == "Progress":
                                     if notes:
                                         update_details += f", Note: {notes}"
                                     
-                                    history.append(add_history_entry(selected_order_id, "Partial Qty Moved", update_details))
+                                    history.append(add_history_entry(order_id, "Partial Qty Moved", update_details))
                                     
-                                    st.session_state["data_produksi"].at[order_idx, "Tracking"] = json.dumps(tracking_data)
-                                    st.session_state["data_produksi"].at[order_idx, "Proses Saat Ini"] = new_proses_saat_ini
-                                    st.session_state["data_produksi"].at[order_idx, "Progress"] = f"{new_progress_percent:.0f}%"
-                                    st.session_state["data_produksi"].at[order_idx, "History"] = json.dumps(history)
+                                    st.session_state["data_produksi"].at[idx, "Tracking"] = json.dumps(tracking_data)
+                                    st.session_state["data_produksi"].at[idx, "Proses Saat Ini"] = new_proses_saat_ini
+                                    st.session_state["data_produksi"].at[idx, "Progress"] = f"{new_progress_percent:.0f}%"
+                                    st.session_state["data_produksi"].at[idx, "History"] = json.dumps(history)
 
                                     if notes:
                                         current_keterangan = str(order_data["Keterangan"]) if order_data["Keterangan"] else ""
                                         new_keterangan = f"{current_keterangan}\n[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}] {notes}".strip()
-                                        st.session_state["data_produksi"].at[order_idx, "Keterangan"] = new_keterangan
+                                        st.session_state["data_produksi"].at[idx, "Keterangan"] = new_keterangan
                                     
                                     if save_data(st.session_state["data_produksi"]):
                                         st.success(f"✅ Berhasil memindahkan {qty_to_move} pcs dari {from_stage} ke {to_stage}!")
@@ -990,6 +979,9 @@ elif st.session_state["menu"] == "Progress":
                             """, unsafe_allow_html=True)
                     else:
                         st.info("Belum ada riwayat update untuk order ini")
+                    
+                    st.markdown("---")
+                    st.markdown("---")
         else:
             st.info("👆 Silakan pilih Buyer dan Produk untuk melihat daftar order yang tersedia.")
 
@@ -1696,4 +1688,4 @@ elif st.session_state["menu"] == "Gantt":
         st.info("📝 Belum ada data untuk membuat Gantt Chart.")
 
 st.markdown("---")
-st.caption(f"© 2025 PPIC-DSS System | Enhanced with Procurement Module | v8.5")
+st.caption(f"© 2025 PPIC-DSS System | Enhanced with Procurement Module | v9.0")
