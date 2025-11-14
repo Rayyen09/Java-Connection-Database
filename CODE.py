@@ -645,13 +645,18 @@ elif st.session_state["menu"] == "Orders":
                                     st.markdown(f"**💬 Keterangan:** {row['Keterangan']}")
                                 
                                 st.markdown("---")
-                                btn_col1, btn_col2 = st.columns(2)
+                                btn_col1, btn_col2, btn_col3 = st.columns(3)
                                 with btn_col1:
-                                    if st.button("✏️ Edit Progress", key=f"edit_{idx}", use_container_width=True, type="primary"):
+                                    if st.button("✏️ Edit Order", key=f"edit_order_{idx}", use_container_width=True, type="primary"):
+                                        st.session_state["edit_order_mode"] = True
+                                        st.session_state["edit_order_index"] = idx
+                                        st.rerun()
+                                with btn_col2:
+                                    if st.button("⚙️ Edit Progress", key=f"edit_{idx}", use_container_width=True, type="secondary"):
                                         st.session_state["edit_order_idx"] = idx
                                         st.session_state["menu"] = "Progress"
                                         st.rerun()
-                                with btn_col2:
+                                with btn_col3:
                                     if st.button("🗑️ Delete Order", key=f"del_{idx}", use_container_width=True, type="secondary"):
                                         if st.session_state.get(f"confirm_delete_{idx}", False):
                                             st.session_state["data_produksi"].drop(idx, inplace=True)
@@ -664,6 +669,113 @@ elif st.session_state["menu"] == "Orders":
                                             st.session_state[f"confirm_delete_{idx}"] = True
                                             st.warning("⚠️ Klik sekali lagi untuk konfirmasi hapus!")
                                             st.rerun()
+                
+                # Check if in edit mode for any order
+                if st.session_state.get("edit_order_mode", False) and "edit_order_index" in st.session_state:
+                    edit_idx = st.session_state["edit_order_index"]
+                    edit_row = st.session_state["data_produksi"].loc[edit_idx]
+                    
+                    st.markdown("---")
+                    st.markdown("## ✏️ EDIT ORDER")
+                    st.markdown(f"### Editing: {edit_row['Order ID']} - {edit_row['Produk']}")
+                    
+                    with st.form("edit_order_form"):
+                        col_edit1, col_edit2, col_edit3 = st.columns(3)
+                        
+                        with col_edit1:
+                            st.markdown("**📦 Order Information**")
+                            edit_buyer = st.selectbox("Buyer", get_buyer_names(), 
+                                                     index=get_buyer_names().index(edit_row['Buyer']) if edit_row['Buyer'] in get_buyer_names() else 0,
+                                                     key="edit_buyer")
+                            edit_produk = st.text_input("Nama Produk", value=edit_row['Produk'], key="edit_produk")
+                            edit_qty = st.number_input("Quantity (pcs)", min_value=1, value=int(edit_row['Qty']), key="edit_qty")
+                            edit_due_date = st.date_input("Due Date", value=edit_row['Due Date'], key="edit_due_date")
+                            edit_prioritas = st.selectbox("Prioritas", ["High", "Medium", "Low"],
+                                                         index=["High", "Medium", "Low"].index(edit_row['Prioritas']) if edit_row['Prioritas'] in ["High", "Medium", "Low"] else 0,
+                                                         key="edit_prioritas")
+                        
+                        with col_edit2:
+                            st.markdown("**🔧 Specifications**")
+                            edit_material = st.text_input("Material", value=edit_row.get('Material', ''), key="edit_material")
+                            edit_finishing = st.text_input("Finishing", value=edit_row.get('Finishing', ''), key="edit_finishing")
+                            edit_description = st.text_area("Description", value=edit_row.get('Description', ''), height=100, key="edit_description")
+                            
+                            st.markdown("**Product Size (cm)**")
+                            col_ps1, col_ps2, col_ps3 = st.columns(3)
+                            with col_ps1:
+                                edit_prod_p = st.number_input("P", min_value=0.0, value=float(edit_row.get('Product Size P', 0)), step=0.1, key="edit_prod_p")
+                            with col_ps2:
+                                edit_prod_l = st.number_input("L", min_value=0.0, value=float(edit_row.get('Product Size L', 0)), step=0.1, key="edit_prod_l")
+                            with col_ps3:
+                                edit_prod_t = st.number_input("T", min_value=0.0, value=float(edit_row.get('Product Size T', 0)), step=0.1, key="edit_prod_t")
+                        
+                        with col_edit3:
+                            st.markdown("**📦 Packing Information**")
+                            st.markdown("**Packing Size (cm)**")
+                            col_pack1, col_pack2, col_pack3 = st.columns(3)
+                            with col_pack1:
+                                edit_pack_p = st.number_input("P", min_value=0.0, value=float(edit_row.get('Packing Size P', 0)), step=0.1, key="edit_pack_p")
+                            with col_pack2:
+                                edit_pack_l = st.number_input("L", min_value=0.0, value=float(edit_row.get('Packing Size L', 0)), step=0.1, key="edit_pack_l")
+                            with col_pack3:
+                                edit_pack_t = st.number_input("T", min_value=0.0, value=float(edit_row.get('Packing Size T', 0)), step=0.1, key="edit_pack_t")
+                            
+                            # Calculate new CBM
+                            new_cbm_per_pcs = calculate_cbm(edit_pack_p, edit_pack_l, edit_pack_t)
+                            new_total_cbm = new_cbm_per_pcs * edit_qty
+                            st.info(f"CBM per Pcs: {new_cbm_per_pcs:.6f} m³")
+                            st.info(f"Total CBM: {new_total_cbm:.4f} m³")
+                            
+                            edit_keterangan = st.text_area("Keterangan", value=edit_row.get('Keterangan', ''), height=80, key="edit_keterangan")
+                        
+                        col_submit1, col_submit2 = st.columns(2)
+                        with col_submit1:
+                            submit_edit = st.form_submit_button("💾 Simpan Perubahan", use_container_width=True, type="primary")
+                        with col_submit2:
+                            cancel_edit = st.form_submit_button("❌ Batal", use_container_width=True, type="secondary")
+                        
+                        if submit_edit:
+                            # Update the order data
+                            st.session_state["data_produksi"].at[edit_idx, "Buyer"] = edit_buyer
+                            st.session_state["data_produksi"].at[edit_idx, "Produk"] = edit_produk
+                            st.session_state["data_produksi"].at[edit_idx, "Qty"] = edit_qty
+                            st.session_state["data_produksi"].at[edit_idx, "Due Date"] = edit_due_date
+                            st.session_state["data_produksi"].at[edit_idx, "Prioritas"] = edit_prioritas
+                            st.session_state["data_produksi"].at[edit_idx, "Material"] = edit_material
+                            st.session_state["data_produksi"].at[edit_idx, "Finishing"] = edit_finishing
+                            st.session_state["data_produksi"].at[edit_idx, "Description"] = edit_description
+                            st.session_state["data_produksi"].at[edit_idx, "Product Size P"] = edit_prod_p
+                            st.session_state["data_produksi"].at[edit_idx, "Product Size L"] = edit_prod_l
+                            st.session_state["data_produksi"].at[edit_idx, "Product Size T"] = edit_prod_t
+                            st.session_state["data_produksi"].at[edit_idx, "Packing Size P"] = edit_pack_p
+                            st.session_state["data_produksi"].at[edit_idx, "Packing Size L"] = edit_pack_l
+                            st.session_state["data_produksi"].at[edit_idx, "Packing Size T"] = edit_pack_t
+                            st.session_state["data_produksi"].at[edit_idx, "CBM per Pcs"] = new_cbm_per_pcs
+                            st.session_state["data_produksi"].at[edit_idx, "Total CBM"] = new_total_cbm
+                            st.session_state["data_produksi"].at[edit_idx, "Keterangan"] = edit_keterangan
+                            
+                            # Add history entry
+                            try:
+                                history = json.loads(edit_row["History"]) if edit_row["History"] else []
+                            except:
+                                history = []
+                            
+                            history.append(add_history_entry(edit_row['Order ID'], "Order Edited", 
+                                f"Order data updated: Buyer={edit_buyer}, Product={edit_produk}, Qty={edit_qty}"))
+                            st.session_state["data_produksi"].at[edit_idx, "History"] = json.dumps(history)
+                            
+                            if save_data(st.session_state["data_produksi"]):
+                                st.success(f"✅ Order {edit_row['Order ID']} berhasil diupdate!")
+                                st.session_state["edit_order_mode"] = False
+                                del st.session_state["edit_order_index"]
+                                st.rerun()
+                            else:
+                                st.error("Gagal menyimpan perubahan!")
+                        
+                        if cancel_edit:
+                            st.session_state["edit_order_mode"] = False
+                            del st.session_state["edit_order_index"]
+                            st.rerun()
     else:
         st.info("📝 Belum ada order yang diinput.")
 
@@ -673,6 +785,30 @@ elif st.session_state["menu"] == "Progress":
     
     df = st.session_state["data_produksi"]
     
+    # Add filters for Buyer and Product
+    st.markdown("### 🔍 Filter Order")
+    col_filter1, col_filter2, col_filter3 = st.columns(3)
+    
+    with col_filter1:
+        buyer_filter = st.multiselect("Filter Buyer", df["Buyer"].unique().tolist(), key="progress_buyer_filter")
+    
+    with col_filter2:
+        product_filter = st.multiselect("Filter Produk", df["Produk"].unique().tolist(), key="progress_product_filter")
+    
+    with col_filter3:
+        search_filter = st.text_input("🔍 Cari Order ID", key="progress_search_filter")
+    
+    # Apply filters
+    df_filtered = df.copy()
+    if buyer_filter:
+        df_filtered = df_filtered[df_filtered["Buyer"].isin(buyer_filter)]
+    if product_filter:
+        df_filtered = df_filtered[df_filtered["Produk"].isin(product_filter)]
+    if search_filter:
+        df_filtered = df_filtered[df_filtered["Order ID"].str.contains(search_filter, case=False, na=False)]
+    
+    st.markdown("---")
+    
     stage_to_progress = {
         "Pre Order": 0, "Order di Supplier": 10, "Warehouse": 20,
         "Fitting 1": 30, "Amplas": 40, "Revisi 1": 50,
@@ -681,166 +817,175 @@ elif st.session_state["menu"] == "Progress":
     }
     stages_list = get_tracking_stages()
 
-    order_options = [f"{row['Order ID']} | {row['Buyer']} | {row['Produk']} | {row['Proses Saat Ini']}" for idx, row in df.iterrows()]
+    order_options = [f"{row['Order ID']} | {row['Buyer']} | {row['Produk']} | {row['Proses Saat Ini']}" for idx, row in df_filtered.iterrows()]
     
-    default_idx = 0
-    if "edit_order_idx" in st.session_state:
-        edit_order_id = df.iloc[st.session_state["edit_order_idx"]]["Order ID"]
-        for i, opt in enumerate(order_options):
-            if opt.startswith(edit_order_id):
-                default_idx = i
-                break
-        del st.session_state["edit_order_idx"]
-    
-    selected_option = st.selectbox("📦 Pilih Order untuk Update", order_options, index=default_idx, key="select_order_update")
-    
-    if selected_option:
-        selected_order_id = selected_option.split(" | ")[0]
-        order_data = df[df["Order ID"] == selected_order_id].iloc[0]
-        order_idx = df[df["Order ID"] == selected_order_id].index[0]
+    if not order_options:
+        st.warning("⚠️ Tidak ada order yang sesuai dengan filter. Silakan ubah filter.")
+    else:
+        default_idx = 0
+        if "edit_order_idx" in st.session_state:
+            edit_order_id = df.iloc[st.session_state["edit_order_idx"]]["Order ID"]
+            for i, opt in enumerate(order_options):
+                if opt.startswith(edit_order_id):
+                    default_idx = i
+                    break
+            del st.session_state["edit_order_idx"]
         
-        total_order_qty = order_data["Qty"]
+        selected_option = st.selectbox("📦 Pilih Order untuk Update", order_options, index=default_idx, key="select_order_update")
         
-        try:
-            tracking_data = json.loads(order_data["Tracking"])
+        if selected_option:
+            selected_order_id = selected_option.split(" | ")[0]
+            order_data = df[df["Order ID"] == selected_order_id].iloc[0]
+            order_idx = df[df["Order ID"] == selected_order_id].index[0]
+            
+            total_order_qty = order_data["Qty"]
+            
+            try:
+                tracking_data = json.loads(order_data["Tracking"])
+                for stage in stages_list:
+                    if stage not in tracking_data:
+                        tracking_data[stage] = {"qty": 0}
+            except:
+                tracking_data = init_tracking_data()
+                tracking_data[order_data["Proses Saat Ini"]] = {"qty": total_order_qty}
+            
+            st.markdown("---")
+            
+            st.subheader("📍 Posisi Qty Saat Ini")
+            st.info(f"Total Qty untuk Order Ini: **{total_order_qty} pcs**")
+            
+            cols = st.columns(3)
+            col_idx = 0
+            qty_in_progress = 0
             for stage in stages_list:
-                if stage not in tracking_data:
-                    tracking_data[stage] = {"qty": 0}
-        except:
-            tracking_data = init_tracking_data()
-            tracking_data[order_data["Proses Saat Ini"]] = {"qty": total_order_qty}
-        
-        st.markdown("---")
-        
-        st.subheader("📍 Posisi Qty Saat Ini")
-        st.info(f"Total Qty untuk Order Ini: **{total_order_qty} pcs**")
-        
-        cols = st.columns(3)
-        col_idx = 0
-        qty_in_progress = 0
-        for stage in stages_list:
-            qty = tracking_data.get(stage, {}).get("qty", 0)
-            if qty > 0:
-                with cols[col_idx % 3]:
-                    st.metric(f"**{stage}**", f"{qty} pcs")
-                col_idx += 1
-                qty_in_progress += qty
-        
-        if qty_in_progress != total_order_qty:
-            st.warning(f"Data Qty tidak sinkron! Qty terlacak: {qty_in_progress}, Total Qty Order: {total_order_qty}")
-        
-        st.markdown("---")
+                qty = tracking_data.get(stage, {}).get("qty", 0)
+                if qty > 0:
+                    with cols[col_idx % 3]:
+                        st.metric(f"**{stage}**", f"{qty} pcs")
+                    col_idx += 1
+                    qty_in_progress += qty
+            
+            if qty_in_progress != total_order_qty:
+                st.warning(f"Data Qty tidak sinkron! Qty terlacak: {qty_in_progress}, Total Qty Order: {total_order_qty}")
+            
+            st.markdown("---")
 
-        st.subheader("🚚 Pindahkan Qty ke Workstation Berikutnya")
-        
-        stages_with_qty = [stage for stage, data in tracking_data.items() if data.get("qty", 0) > 0]
-        
-        if not stages_with_qty:
-            st.warning("Semua Qty sudah 'Selesai' atau belum ada Qty di workstation manapun.")
-        else:
-            with st.form("move_qty_form"):
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    from_stage = st.selectbox("Pindahkan DARI", stages_with_qty)
-                
-                with col2:
-                    max_qty_available = tracking_data.get(from_stage, {}).get("qty", 0)
-                    qty_to_move = st.number_input(f"Jumlah Qty (Max: {max_qty_available})", 
-                                                  min_value=1, 
-                                                  max_value=max_qty_available, 
-                                                  value=max_qty_available)
-                
-                with col3:
-                    try:
-                        from_stage_index = stages_list.index(from_stage)
-                        available_to_stages = stages_list[from_stage_index + 1:]
-                    except:
-                        available_to_stages = stages_list
-                        
-                    to_stage = st.selectbox("Pindahkan KE", available_to_stages)
-
-                notes = st.text_area("Catatan Update (Opsional)", placeholder="Misal: 5 pcs selesai...")
-                
-                submit_move = st.form_submit_button("💾 Pindahkan Qty", type="primary", use_container_width=True)
-                
-                if submit_move:
-                    if not to_stage or not from_stage:
-                        st.error("Pilih workstation asal dan tujuan!")
-                    else:
-                        tracking_data[from_stage]["qty"] -= qty_to_move
-                        tracking_data[to_stage]["qty"] += qty_to_move
-                        
-                        new_proses_saat_ini = "Selesai"
-                        for stage in stages_list:
-                            if tracking_data.get(stage, {}).get("qty", 0) > 0:
-                                new_proses_saat_ini = stage
-                                break
-                        
-                        total_progress_score = 0
-                        for stage, data in tracking_data.items():
-                            qty_in_stage = data.get("qty", 0)
-                            progress_per_stage = stage_to_progress.get(stage, 0)
-                            total_progress_score += (qty_in_stage * progress_per_stage)
-                        
-                        if total_order_qty > 0:
-                            new_progress_percent = total_progress_score / total_order_qty
-                        else:
-                            new_progress_percent = 0
-
-                        if tracking_data["Pengiriman"]["qty"] == total_order_qty:
-                            new_progress_percent = 100
-                            new_proses_saat_ini = "Pengiriman"
-
+            st.subheader("🚚 Pindahkan Qty ke Workstation Berikutnya")
+            
+            stages_with_qty = [stage for stage, data in tracking_data.items() if data.get("qty", 0) > 0]
+            
+            if not stages_with_qty:
+                st.warning("Semua Qty sudah 'Selesai' atau belum ada Qty di workstation manapun.")
+            else:
+                with st.form("move_qty_form"):
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        from_stage = st.selectbox("Pindahkan DARI", stages_with_qty)
+                    
+                    with col2:
+                        max_qty_available = tracking_data.get(from_stage, {}).get("qty", 0)
+                        qty_to_move = st.number_input(f"Jumlah Qty (Max: {max_qty_available})", 
+                                                      min_value=1, 
+                                                      max_value=max_qty_available, 
+                                                      value=max_qty_available)
+                    
+                    with col3:
+                        # STATIC NEXT WORKSTATION - hanya bisa pilih workstation berikutnya
                         try:
-                            history = json.loads(order_data["History"]) if order_data["History"] else []
+                            from_stage_index = stages_list.index(from_stage)
+                            if from_stage_index < len(stages_list) - 1:
+                                # Hanya tampilkan workstation berikutnya (1 tahap setelahnya)
+                                next_stage = stages_list[from_stage_index + 1]
+                                st.info(f"Pindahkan KE: **{next_stage}**")
+                                to_stage = next_stage
+                            else:
+                                st.info("Sudah di workstation terakhir")
+                                to_stage = from_stage
                         except:
-                            history = []
-                        
-                        update_details = f"Memindahkan {qty_to_move} pcs dari {from_stage} ke {to_stage}. "
-                        update_details += f"Progress baru: {new_progress_percent:.0f}%, "
-                        update_details += f"Proses utama: {new_proses_saat_ini}"
-                        if notes:
-                            update_details += f", Note: {notes}"
-                        
-                        history.append(add_history_entry(selected_order_id, "Partial Qty Moved", update_details))
-                        
-                        st.session_state["data_produksi"].at[order_idx, "Tracking"] = json.dumps(tracking_data)
-                        st.session_state["data_produksi"].at[order_idx, "Proses Saat Ini"] = new_proses_saat_ini
-                        st.session_state["data_produksi"].at[order_idx, "Progress"] = f"{new_progress_percent:.0f}%"
-                        st.session_state["data_produksi"].at[order_idx, "History"] = json.dumps(history)
+                            to_stage = stages_list[0]
 
-                        if notes:
-                            current_keterangan = str(order_data["Keterangan"]) if order_data["Keterangan"] else ""
-                            new_keterangan = f"{current_keterangan}\n[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}] {notes}".strip()
-                            st.session_state["data_produksi"].at[order_idx, "Keterangan"] = new_keterangan
-                        
-                        if save_data(st.session_state["data_produksi"]):
-                            st.success(f"✅ Berhasil memindahkan {qty_to_move} pcs dari {from_stage} ke {to_stage}!")
-                            st.balloons()
-                            st.rerun()
+                    notes = st.text_area("Catatan Update (Opsional)", placeholder="Misal: 5 pcs selesai...")
+                    
+                    submit_move = st.form_submit_button("💾 Pindahkan Qty", type="primary", use_container_width=True)
+                    
+                    if submit_move:
+                        if not to_stage or not from_stage or to_stage == from_stage:
+                            st.error("Tidak dapat memindahkan Qty!")
                         else:
-                            st.error("Gagal menyimpan data!")
+                            tracking_data[from_stage]["qty"] -= qty_to_move
+                            tracking_data[to_stage]["qty"] += qty_to_move
+                            
+                            new_proses_saat_ini = "Selesai"
+                            for stage in stages_list:
+                                if tracking_data.get(stage, {}).get("qty", 0) > 0:
+                                    new_proses_saat_ini = stage
+                                    break
+                            
+                            total_progress_score = 0
+                            for stage, data in tracking_data.items():
+                                qty_in_stage = data.get("qty", 0)
+                                progress_per_stage = stage_to_progress.get(stage, 0)
+                                total_progress_score += (qty_in_stage * progress_per_stage)
+                            
+                            if total_order_qty > 0:
+                                new_progress_percent = total_progress_score / total_order_qty
+                            else:
+                                new_progress_percent = 0
 
-        st.markdown("---")
-        st.subheader("📜 Riwayat Update")
-        
-        try:
-            history = json.loads(order_data["History"]) if order_data["History"] else []
-        except:
-            history = []
-        
-        if history:
-            for entry in reversed(history[-10:]):
-                st.markdown(f"""
-                <div style='background-color: #1F2937; padding: 10px; border-radius: 5px; margin: 5px 0; border-left: 3px solid #3B82F6;'>
-                    <strong style='color: #60A5FA;'>⏱️ {entry.get("timestamp", "")}</strong><br>
-                    <strong style='color: #10B981;'>{entry.get("action", "")}</strong><br>
-                    <span style='color: #D1D5DB;'>{entry.get("details", "")}</span>
-                </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.info("Belum ada riwayat update untuk order ini")
+                            if tracking_data["Pengiriman"]["qty"] == total_order_qty:
+                                new_progress_percent = 100
+                                new_proses_saat_ini = "Pengiriman"
+
+                            try:
+                                history = json.loads(order_data["History"]) if order_data["History"] else []
+                            except:
+                                history = []
+                            
+                            update_details = f"Memindahkan {qty_to_move} pcs dari {from_stage} ke {to_stage}. "
+                            update_details += f"Progress baru: {new_progress_percent:.0f}%, "
+                            update_details += f"Proses utama: {new_proses_saat_ini}"
+                            if notes:
+                                update_details += f", Note: {notes}"
+                            
+                            history.append(add_history_entry(selected_order_id, "Partial Qty Moved", update_details))
+                            
+                            st.session_state["data_produksi"].at[order_idx, "Tracking"] = json.dumps(tracking_data)
+                            st.session_state["data_produksi"].at[order_idx, "Proses Saat Ini"] = new_proses_saat_ini
+                            st.session_state["data_produksi"].at[order_idx, "Progress"] = f"{new_progress_percent:.0f}%"
+                            st.session_state["data_produksi"].at[order_idx, "History"] = json.dumps(history)
+
+                            if notes:
+                                current_keterangan = str(order_data["Keterangan"]) if order_data["Keterangan"] else ""
+                                new_keterangan = f"{current_keterangan}\n[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}] {notes}".strip()
+                                st.session_state["data_produksi"].at[order_idx, "Keterangan"] = new_keterangan
+                            
+                            if save_data(st.session_state["data_produksi"]):
+                                st.success(f"✅ Berhasil memindahkan {qty_to_move} pcs dari {from_stage} ke {to_stage}!")
+                                st.balloons()
+                                st.rerun()
+                            else:
+                                st.error("Gagal menyimpan data!")
+
+            st.markdown("---")
+            st.subheader("📜 Riwayat Update")
+            
+            try:
+                history = json.loads(order_data["History"]) if order_data["History"] else []
+            except:
+                history = []
+            
+            if history:
+                for entry in reversed(history[-10:]):
+                    st.markdown(f"""
+                    <div style='background-color: #1F2937; padding: 10px; border-radius: 5px; margin: 5px 0; border-left: 3px solid #3B82F6;'>
+                        <strong style='color: #60A5FA;'>⏱️ {entry.get("timestamp", "")}</strong><br>
+                        <strong style='color: #10B981;'>{entry.get("action", "")}</strong><br>
+                        <span style='color: #D1D5DB;'>{entry.get("details", "")}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("Belum ada riwayat update untuk order ini")
 
 # ===== MENU: TRACKING PRODUKSI =====
 elif st.session_state["menu"] == "Tracking":
@@ -954,8 +1099,8 @@ elif st.session_state["menu"] == "Tracking":
                         
                         st.progress(int(row['Progress'].rstrip('%')) / 100)
                         
-                        if st.button("⚙️ Update Progress", key=f"track_edit_{row.name}", use_container_width=True, type="secondary"):
-                            st.session_state["edit_order_idx"] = row.name
+                        if st.button("⚙️ Update Progress", key=f"track_edit_{idx}", use_container_width=True, type="secondary"):
+                            st.session_state["edit_order_idx"] = idx
                             st.session_state["menu"] = "Progress"
                             st.rerun()
                             
@@ -1542,4 +1687,4 @@ elif st.session_state["menu"] == "Gantt":
         st.info("📝 Belum ada data untuk membuat Gantt Chart.")
 
 st.markdown("---")
-st.caption(f"© 2025 PPIC-DSS System | Enhanced with Procurement Module | v7.2")
+st.caption(f"© 2025 PPIC-DSS System | Enhanced with Procurement Module | v8.0")
