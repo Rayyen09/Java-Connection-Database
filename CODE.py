@@ -357,6 +357,7 @@ if st.session_state["menu"] == "Dashboard":
             df_month = df_copy[(df_copy['Due Date'].dt.month == month_num) & 
                          (df_copy['Due Date'].dt.year == selected_year)]
             
+            # Always show calendar, with or without orders
             if not df_month.empty:
                 # Group by date
                 due_dates_grouped = df_month.groupby(df_month['Due Date'].dt.date).agg({
@@ -366,27 +367,31 @@ if st.session_state["menu"] == "Dashboard":
                 }).reset_index()
                 
                 st.markdown(f"**📌 {len(df_month)} orders jatuh tempo di bulan ini**")
-                
-                # Create calendar view
-                import calendar
-                cal = calendar.monthcalendar(selected_year, month_num)
-                
-                # Create header
-                days = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"]
-                header_cols = st.columns(7)
-                for i, day in enumerate(days):
-                    header_cols[i].markdown(f"**{day}**")
-                
-                # Create calendar grid
-                for week in cal:
-                    week_cols = st.columns(7)
-                    for i, day in enumerate(week):
-                        if day == 0:
-                            week_cols[i].markdown("")
-                        else:
-                            date_obj = datetime.date(selected_year, month_num, day)
-                            
-                            # Check if there are orders on this date
+            else:
+                st.markdown(f"**📅 Kalender {selected_month} {selected_year}**")
+                st.info("Tidak ada order yang jatuh tempo di bulan ini")
+            
+            # Create calendar view (always show)
+            import calendar
+            cal = calendar.monthcalendar(selected_year, month_num)
+            
+            # Create header
+            days = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"]
+            header_cols = st.columns(7)
+            for i, day in enumerate(days):
+                header_cols[i].markdown(f"**{day}**")
+            
+            # Create calendar grid
+            for week in cal:
+                week_cols = st.columns(7)
+                for i, day in enumerate(week):
+                    if day == 0:
+                        week_cols[i].markdown("")
+                    else:
+                        date_obj = datetime.date(selected_year, month_num, day)
+                        
+                        # Check if there are orders on this date (only if df_month is not empty)
+                        if not df_month.empty:
                             orders_on_date = df_month[df_month['Due Date'].dt.date == date_obj]
                             
                             if len(orders_on_date) > 0:
@@ -412,21 +417,29 @@ if st.session_state["menu"] == "Dashboard":
                                 </div>
                                 """, unsafe_allow_html=True)
                             else:
-                                # Regular day
+                                # Regular day - no orders
                                 if date_obj == today:
                                     week_cols[i].markdown(f"<div style='padding: 8px; text-align: center; border: 2px solid #3B82F6; border-radius: 5px;'><strong>{day}</strong></div>", unsafe_allow_html=True)
                                 else:
                                     week_cols[i].markdown(f"<div style='padding: 8px; text-align: center;'>{day}</div>", unsafe_allow_html=True)
-                
-                # Legend
+                        else:
+                            # No orders in this month - show regular calendar
+                            if date_obj == today:
+                                week_cols[i].markdown(f"<div style='padding: 8px; text-align: center; border: 2px solid #3B82F6; border-radius: 5px;'><strong>{day}</strong></div>", unsafe_allow_html=True)
+                            else:
+                                week_cols[i].markdown(f"<div style='padding: 8px; text-align: center;'>{day}</div>", unsafe_allow_html=True)
+            
+            # Legend (only show if there are orders)
+            if not df_month.empty:
                 st.markdown("---")
                 leg_col1, leg_col2, leg_col3, leg_col4 = st.columns(4)
                 leg_col1.markdown("🔵 **Upcoming** - Orders mendatang")
                 leg_col2.markdown("🟠 **Today** - Jatuh tempo hari ini")
                 leg_col3.markdown("🔴 **Overdue** - Terlambat")
                 leg_col4.markdown("🟢 **Done** - Sudah selesai")
-                
-                # Orders detail for selected month
+            
+            # Orders detail for selected month (only if there are orders)
+            if not df_month.empty:
                 st.markdown("---")
                 st.markdown("### 📋 Detail Orders Bulan Ini")
                 
@@ -460,8 +473,6 @@ if st.session_state["menu"] == "Dashboard":
                             st.write(f"**Prioritas:** {row['Prioritas']}")
                             st.write(f"**Status:** {row['Tracking Status']}")
                             st.write(f"**Proses:** {row['Proses Saat Ini']}")
-            else:
-                st.info(f"📅 Tidak ada order yang jatuh tempo di {selected_month} {selected_year}")
         
         with col_right:
             st.markdown("### 📊 Status Distribution")
@@ -2001,4 +2012,4 @@ elif st.session_state["menu"] == "Gantt":
         st.info("📝 Belum ada data untuk membuat Gantt Chart.")
 
 st.markdown("---")
-st.caption(f"© 2025 PPIC-DSS System | Enhanced Dashboard & Calendar | v10.1")
+st.caption(f"© 2025 PPIC-DSS System | Enhanced Dashboard & Calendar | v10.2")
