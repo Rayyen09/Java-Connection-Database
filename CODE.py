@@ -351,10 +351,11 @@ if st.session_state["menu"] == "Dashboard":
                 years = list(range(current_year - 1, current_year + 3))
                 selected_year = st.selectbox("Tahun", years, index=1, key="cal_year")
             
-            # Filter orders by selected month/year
-            df['Due Date'] = pd.to_datetime(df['Due Date'])
-            df_month = df[(df['Due Date'].dt.month == month_num) & 
-                         (df['Due Date'].dt.year == selected_year)]
+            # Filter orders by selected month/year - ensure datetime type
+            df_copy = df.copy()
+            df_copy['Due Date'] = pd.to_datetime(df_copy['Due Date'])
+            df_month = df_copy[(df_copy['Due Date'].dt.month == month_num) & 
+                         (df_copy['Due Date'].dt.year == selected_year)]
             
             if not df_month.empty:
                 # Group by date
@@ -596,8 +597,12 @@ if st.session_state["menu"] == "Dashboard":
         # ===== SECTION 6: ALERTS & NOTIFICATIONS =====
         st.markdown("### ⚠️ Alerts & Notifications")
         
-        # Check for overdue orders
-        today = datetime.date.today()
+        # Check for overdue orders - convert today to Timestamp for comparison
+        today = pd.Timestamp(datetime.date.today())
+        
+        # Ensure Due Date is datetime64
+        df['Due Date'] = pd.to_datetime(df['Due Date'])
+        
         overdue_orders = df[(df['Due Date'] < today) & (df['Tracking Status'] != 'Done')]
         
         if len(overdue_orders) > 0:
@@ -607,14 +612,15 @@ if st.session_state["menu"] == "Dashboard":
                 st.markdown(f"- {row['Order ID']} ({row['Buyer']}) - Terlambat {days_late} hari")
         
         # Check for due today
-        due_today = df[(df['Due Date'] == today) & (df['Tracking Status'] != 'Done')]
+        due_today = df[(df['Due Date'].dt.date == datetime.date.today()) & (df['Tracking Status'] != 'Done')]
         if len(due_today) > 0:
             st.warning(f"⏰ **{len(due_today)} orders jatuh tempo hari ini!**")
             for idx, row in due_today.iterrows():
                 st.markdown(f"- {row['Order ID']} ({row['Buyer']}) - Progress: {row['Progress']}")
         
         # Check for due within 3 days
-        due_soon = df[(df['Due Date'] > today) & (df['Due Date'] <= today + datetime.timedelta(days=3)) & (df['Tracking Status'] != 'Done')]
+        three_days_later = today + pd.Timedelta(days=3)
+        due_soon = df[(df['Due Date'] > today) & (df['Due Date'] <= three_days_later) & (df['Tracking Status'] != 'Done')]
         if len(due_soon) > 0:
             st.info(f"📅 **{len(due_soon)} orders akan jatuh tempo dalam 3 hari**")
         
@@ -1995,4 +2001,4 @@ elif st.session_state["menu"] == "Gantt":
         st.info("📝 Belum ada data untuk membuat Gantt Chart.")
 
 st.markdown("---")
-st.caption(f"© 2025 PPIC-DSS System | Enhanced Dashboard & Calendar | v10.0")
+st.caption(f"© 2025 PPIC-DSS System | Enhanced Dashboard & Calendar | v10.1")
