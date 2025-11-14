@@ -1406,8 +1406,8 @@ elif st.session_state["menu"] == "Tracking":
                         det_col1.write(f"**Buyer:** {row['Buyer']}")
                         det_col2.write(f"**Qty di Tahap Ini:** {qty_in_stage} / {row['Qty']} pcs")
                         
-                        due_date = row['Due Date']
-                        days_until_due = (due_date - datetime.date.today()).days
+                        due_date = row['Due Date'].date() if isinstance(row['Due Date'], pd.Timestamp) else row['Due Date']
+                        days_until_due = (due_date - today).days
                         if days_until_due < 0:
                             date_color = "#EF4444"; date_icon = "🔴"
                         elif days_until_due <= 7:
