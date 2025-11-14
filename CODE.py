@@ -359,14 +359,8 @@ if st.session_state["menu"] == "Dashboard":
             
             # Always show calendar, with or without orders
             if not df_month.empty:
-                # Group by date
-                due_dates_grouped = df_month.groupby(df_month['Due Date'].dt.date).agg({
-                    'Order ID': 'count',
-                    'Qty': 'sum',
-                    'Tracking Status': lambda x: list(x)
-                }).reset_index()
-                
-                st.markdown(f"**📌 {len(df_month)} orders jatuh tempo di bulan ini**")
+                # Group by buyer and date
+                st.markdown(f"**📌 {len(df_month)} orders dari {df_month['Buyer'].nunique()} buyer di bulan ini**")
             else:
                 st.markdown(f"**📅 Kalender {selected_month} {selected_year}**")
                 st.info("Tidak ada order yang jatuh tempo di bulan ini")
@@ -395,8 +389,8 @@ if st.session_state["menu"] == "Dashboard":
                             orders_on_date = df_month[df_month['Due Date'].dt.date == date_obj]
                             
                             if len(orders_on_date) > 0:
+                                buyer_count = orders_on_date['Buyer'].nunique()
                                 order_count = len(orders_on_date)
-                                qty_count = orders_on_date['Qty'].sum()
                                 
                                 # Determine color based on status
                                 done_count = len(orders_on_date[orders_on_date['Tracking Status'] == 'Done'])
@@ -412,8 +406,8 @@ if st.session_state["menu"] == "Dashboard":
                                 week_cols[i].markdown(f"""
                                 <div style='background-color: {bg_color}; padding: 8px; border-radius: 5px; text-align: center;'>
                                     <strong style='color: white; font-size: 16px;'>{day}</strong><br>
-                                    <span style='color: white; font-size: 11px;'>{order_count} order</span><br>
-                                    <span style='color: white; font-size: 11px;'>{qty_count} pcs</span>
+                                    <span style='color: white; font-size: 11px;'>{buyer_count} buyer</span><br>
+                                    <span style='color: white; font-size: 11px;'>{order_count} order</span>
                                 </div>
                                 """, unsafe_allow_html=True)
                             else:
@@ -438,41 +432,44 @@ if st.session_state["menu"] == "Dashboard":
                 leg_col3.markdown("🔴 **Overdue** - Terlambat")
                 leg_col4.markdown("🟢 **Done** - Sudah selesai")
             
-            # Orders detail for selected month (only if there are orders)
+            # Orders detail for selected month - GROUP BY BUYER
             if not df_month.empty:
                 st.markdown("---")
-                st.markdown("### 📋 Detail Orders Bulan Ini")
+                st.markdown("### 📋 Detail Orders Bulan Ini (By Buyer)")
                 
                 # Sort by due date
                 df_month_sorted = df_month.sort_values('Due Date')
                 
-                for idx, row in df_month_sorted.iterrows():
-                    due_date = row['Due Date'].date()
-                    days_until_due = (due_date - today).days
+                # Group by buyer
+                buyers_in_month = df_month_sorted['Buyer'].unique()
+                
+                for buyer in sorted(buyers_in_month):
+                    buyer_orders = df_month_sorted[df_month_sorted['Buyer'] == buyer]
+                    total_buyer_orders = len(buyer_orders)
+                    total_buyer_qty = buyer_orders['Qty'].sum()
                     
-                    if days_until_due < 0:
-                        date_label = f"🔴 Terlambat {abs(days_until_due)} hari"
-                        date_color = "#EF4444"
-                    elif days_until_due == 0:
-                        date_label = "🟠 Hari Ini"
-                        date_color = "#F59E0B"
-                    elif days_until_due <= 7:
-                        date_label = f"🟡 {days_until_due} hari lagi"
-                        date_color = "#F59E0B"
-                    else:
-                        date_label = f"🟢 {days_until_due} hari lagi"
-                        date_color = "#10B981"
-                    
-                    with st.expander(f"{row['Order ID']} - {row['Produk']} | Due: {due_date.strftime('%d %b %Y')} ({date_label})"):
-                        col_detail1, col_detail2 = st.columns(2)
-                        with col_detail1:
-                            st.write(f"**Buyer:** {row['Buyer']}")
-                            st.write(f"**Qty:** {row['Qty']} pcs")
-                            st.write(f"**Progress:** {row['Progress']}")
-                        with col_detail2:
-                            st.write(f"**Prioritas:** {row['Prioritas']}")
-                            st.write(f"**Status:** {row['Tracking Status']}")
-                            st.write(f"**Proses:** {row['Proses Saat Ini']}")
+                    with st.expander(f"👤 **{buyer}** ({total_buyer_orders} orders, {total_buyer_qty} pcs)", expanded=False):
+                        for idx, row in buyer_orders.iterrows():
+                            due_date = row['Due Date'].date()
+                            days_until_due = (due_date - today).days
+                            
+                            if days_until_due < 0:
+                                date_label = f"🔴 Terlambat {abs(days_until_due)} hari"
+                            elif days_until_due == 0:
+                                date_label = "🟠 Hari Ini"
+                            elif days_until_due <= 7:
+                                date_label = f"🟡 {days_until_due} hari lagi"
+                            else:
+                                date_label = f"🟢 {days_until_due} hari lagi"
+                            
+                            st.markdown(f"""
+                            <div style='background-color: #1F2937; padding: 10px; margin: 5px 0; border-radius: 5px; border-left: 3px solid #3B82F6;'>
+                                <strong style='color: #60A5FA;'>{row['Produk']}</strong> ({row['Qty']} pcs)<br>
+                                <span style='color: #D1D5DB;'>Order ID: {row['Order ID']}</span><br>
+                                <span style='color: #D1D5DB;'>Due: {due_date.strftime('%d %b %Y')} - {date_label}</span><br>
+                                <span style='color: #D1D5DB;'>Progress: {row['Progress']} | Status: {row['Tracking Status']}</span>
+                            </div>
+                            """, unsafe_allow_html=True)
         
         with col_right:
             st.markdown("### 📊 Status Distribution")
