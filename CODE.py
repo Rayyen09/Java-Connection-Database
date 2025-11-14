@@ -1842,16 +1842,22 @@ elif st.session_state["menu"] == "Analytics":
     df = st.session_state["data_produksi"]
     
     if not df.empty:
+        # Ensure Due Date is datetime for comparisons
+        df_analysis = df.copy()
+        df_analysis['Due Date'] = pd.to_datetime(df_analysis['Due Date'])
+        
         tab1, tab2, tab3 = st.tabs(["📊 Overview", "👥 By Buyer", "📦 By Product"])
         
         with tab1:
             st.subheader("Performance Overview")
             col1, col2, col3, col4 = st.columns(4)
             
-            total_qty = df["Qty"].sum()
-            on_time_orders = len(df[df["Due Date"] >= datetime.date.today()])
-            completion_rate = (df["Progress"].str.rstrip('%').astype('float').mean())
-            total_buyers = df["Buyer"].nunique()
+            total_qty = df_analysis["Qty"].sum()
+            # Convert today to Timestamp for comparison
+            today_ts = pd.Timestamp(datetime.date.today())
+            on_time_orders = len(df_analysis[df_analysis["Due Date"] >= today_ts])
+            completion_rate = (df_analysis["Progress"].str.rstrip('%').astype('float').mean())
+            total_buyers = df_analysis["Buyer"].nunique()
             
             col1.metric("Total Quantity", f"{total_qty:,} pcs")
             col2.metric("On-Time Orders", on_time_orders)
@@ -1863,20 +1869,20 @@ elif st.session_state["menu"] == "Analytics":
             col_chart1, col_chart2 = st.columns(2)
             
             with col_chart1:
-                priority_count = df["Prioritas"].value_counts()
+                priority_count = df_analysis["Prioritas"].value_counts()
                 fig_priority = px.bar(x=priority_count.index, y=priority_count.values,
                                    title="Orders by Priority")
                 st.plotly_chart(fig_priority, use_container_width=True)
             
             with col_chart2:
-                stage_count = df["Proses Saat Ini"].value_counts()
+                stage_count = df_analysis["Proses Saat Ini"].value_counts()
                 fig_stage = px.pie(values=stage_count.values, names=stage_count.index,
                                      title="Orders by Stage")
                 st.plotly_chart(fig_stage, use_container_width=True)
         
         with tab2:
             st.subheader("Analysis by Buyer")
-            buyer_stats = df.groupby("Buyer").agg({
+            buyer_stats = df_analysis.groupby("Buyer").agg({
                 "Order ID": "count",
                 "Qty": "sum",
                 "Progress": lambda x: x.str.rstrip('%').astype('float').mean()
@@ -1891,7 +1897,7 @@ elif st.session_state["menu"] == "Analytics":
         
         with tab3:
             st.subheader("Analysis by Product")
-            product_stats = df.groupby("Produk").agg({
+            product_stats = df_analysis.groupby("Produk").agg({
                 "Order ID": "count",
                 "Qty": "sum"
             }).rename(columns={"Order ID": "Total Orders", "Qty": "Total Qty"})
@@ -1908,7 +1914,7 @@ elif st.session_state["menu"] == "Analytics":
         col_exp1, col_exp2 = st.columns(2)
         
         with col_exp1:
-            csv_data = df.to_csv(index=False).encode("utf-8")
+            csv_data = df_analysis.to_csv(index=False).encode("utf-8")
             st.download_button(
                 label="📄 Download CSV",
                 data=csv_data,
@@ -1918,7 +1924,7 @@ elif st.session_state["menu"] == "Analytics":
             )
         
         with col_exp2:
-            json_data = df.to_json(orient='records', indent=2, date_format='iso')
+            json_data = df_analysis.to_json(orient='records', indent=2, date_format='iso')
             st.download_button(
                 label="📋 Download JSON",
                 data=json_data,
@@ -2012,4 +2018,4 @@ elif st.session_state["menu"] == "Gantt":
         st.info("📝 Belum ada data untuk membuat Gantt Chart.")
 
 st.markdown("---")
-st.caption(f"© 2025 PPIC-DSS System | Enhanced Dashboard & Calendar | v10.2")
+st.caption(f"© 2025 PPIC-DSS System | Enhanced Dashboard & Calendar | v10.3 - All Type Errors Fixed")
