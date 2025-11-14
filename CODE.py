@@ -902,64 +902,87 @@ elif st.session_state["menu"] == "Progress":
 
                         notes = st.text_area("Catatan Update (Opsional)", placeholder="Misal: 5 pcs selesai...", key=f"notes_{order_id}")
                         
-                        # Submit button outside form
-                        if st.button("💾 Pindahkan Qty", type="primary", use_container_width=True, key=f"submit_move_{order_id}"):
-                            if not to_stage or not from_stage or to_stage == from_stage:
-                                st.error("Tidak dapat memindahkan Qty!")
-                            else:
-                                tracking_data[from_stage]["qty"] -= qty_to_move
-                                tracking_data[to_stage]["qty"] += qty_to_move
-                                
-                                new_proses_saat_ini = "Selesai"
-                                for stage in stages_list:
-                                    if tracking_data.get(stage, {}).get("qty", 0) > 0:
-                                        new_proses_saat_ini = stage
-                                        break
-                                
-                                total_progress_score = 0
-                                for stage, data in tracking_data.items():
-                                    qty_in_stage = data.get("qty", 0)
-                                    progress_per_stage = stage_to_progress.get(stage, 0)
-                                    total_progress_score += (qty_in_stage * progress_per_stage)
-                                
-                                if total_order_qty > 0:
-                                    new_progress_percent = total_progress_score / total_order_qty
-                                else:
-                                    new_progress_percent = 0
+                        # Two-step confirmation system
+                        confirm_key = f"confirm_move_{order_id}"
+                        
+                        # Check if already in confirmation mode
+                        if st.session_state.get(confirm_key, False):
+                            st.warning(f"⚠️ KONFIRMASI: Anda akan memindahkan **{qty_to_move} pcs** dari **{from_stage}** ke **{to_stage}**. Pastikan sudah benar!")
+                            
+                            col_confirm1, col_confirm2 = st.columns(2)
+                            
+                            with col_confirm1:
+                                if st.button("✅ YA, PINDAHKAN", type="primary", use_container_width=True, key=f"yes_move_{order_id}"):
+                                    # Process the move
+                                    if not to_stage or not from_stage or to_stage == from_stage:
+                                        st.error("Tidak dapat memindahkan Qty!")
+                                        st.session_state[confirm_key] = False
+                                    else:
+                                        tracking_data[from_stage]["qty"] -= qty_to_move
+                                        tracking_data[to_stage]["qty"] += qty_to_move
+                                        
+                                        new_proses_saat_ini = "Selesai"
+                                        for stage in stages_list:
+                                            if tracking_data.get(stage, {}).get("qty", 0) > 0:
+                                                new_proses_saat_ini = stage
+                                                break
+                                        
+                                        total_progress_score = 0
+                                        for stage, data in tracking_data.items():
+                                            qty_in_stage = data.get("qty", 0)
+                                            progress_per_stage = stage_to_progress.get(stage, 0)
+                                            total_progress_score += (qty_in_stage * progress_per_stage)
+                                        
+                                        if total_order_qty > 0:
+                                            new_progress_percent = total_progress_score / total_order_qty
+                                        else:
+                                            new_progress_percent = 0
 
-                                if tracking_data["Pengiriman"]["qty"] == total_order_qty:
-                                    new_progress_percent = 100
-                                    new_proses_saat_ini = "Pengiriman"
+                                        if tracking_data["Pengiriman"]["qty"] == total_order_qty:
+                                            new_progress_percent = 100
+                                            new_proses_saat_ini = "Pengiriman"
 
-                                try:
-                                    history = json.loads(order_data["History"]) if order_data["History"] else []
-                                except:
-                                    history = []
-                                
-                                update_details = f"Memindahkan {qty_to_move} pcs dari {from_stage} ke {to_stage}. "
-                                update_details += f"Progress baru: {new_progress_percent:.0f}%, "
-                                update_details += f"Proses utama: {new_proses_saat_ini}"
-                                if notes:
-                                    update_details += f", Note: {notes}"
-                                
-                                history.append(add_history_entry(order_id, "Partial Qty Moved", update_details))
-                                
-                                st.session_state["data_produksi"].at[idx, "Tracking"] = json.dumps(tracking_data)
-                                st.session_state["data_produksi"].at[idx, "Proses Saat Ini"] = new_proses_saat_ini
-                                st.session_state["data_produksi"].at[idx, "Progress"] = f"{new_progress_percent:.0f}%"
-                                st.session_state["data_produksi"].at[idx, "History"] = json.dumps(history)
+                                        try:
+                                            history = json.loads(order_data["History"]) if order_data["History"] else []
+                                        except:
+                                            history = []
+                                        
+                                        update_details = f"Memindahkan {qty_to_move} pcs dari {from_stage} ke {to_stage}. "
+                                        update_details += f"Progress baru: {new_progress_percent:.0f}%, "
+                                        update_details += f"Proses utama: {new_proses_saat_ini}"
+                                        if notes:
+                                            update_details += f", Note: {notes}"
+                                        
+                                        history.append(add_history_entry(order_id, "Partial Qty Moved", update_details))
+                                        
+                                        st.session_state["data_produksi"].at[idx, "Tracking"] = json.dumps(tracking_data)
+                                        st.session_state["data_produksi"].at[idx, "Proses Saat Ini"] = new_proses_saat_ini
+                                        st.session_state["data_produksi"].at[idx, "Progress"] = f"{new_progress_percent:.0f}%"
+                                        st.session_state["data_produksi"].at[idx, "History"] = json.dumps(history)
 
-                                if notes:
-                                    current_keterangan = str(order_data["Keterangan"]) if order_data["Keterangan"] else ""
-                                    new_keterangan = f"{current_keterangan}\n[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}] {notes}".strip()
-                                    st.session_state["data_produksi"].at[idx, "Keterangan"] = new_keterangan
-                                
-                                if save_data(st.session_state["data_produksi"]):
-                                    st.success(f"✅ Berhasil memindahkan {qty_to_move} pcs dari {from_stage} ke {to_stage}!")
-                                    st.balloons()
+                                        if notes:
+                                            current_keterangan = str(order_data["Keterangan"]) if order_data["Keterangan"] else ""
+                                            new_keterangan = f"{current_keterangan}\n[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}] {notes}".strip()
+                                            st.session_state["data_produksi"].at[idx, "Keterangan"] = new_keterangan
+                                        
+                                        if save_data(st.session_state["data_produksi"]):
+                                            st.success(f"✅ Berhasil memindahkan {qty_to_move} pcs dari {from_stage} ke {to_stage}!")
+                                            st.balloons()
+                                            st.session_state[confirm_key] = False
+                                            st.rerun()
+                                        else:
+                                            st.error("Gagal menyimpan data!")
+                                            st.session_state[confirm_key] = False
+                            
+                            with col_confirm2:
+                                if st.button("❌ BATAL", type="secondary", use_container_width=True, key=f"cancel_move_{order_id}"):
+                                    st.session_state[confirm_key] = False
                                     st.rerun()
-                                else:
-                                    st.error("Gagal menyimpan data!")
+                        else:
+                            # First click - show confirmation
+                            if st.button("💾 Pindahkan Qty", type="primary", use_container_width=True, key=f"submit_move_{order_id}"):
+                                st.session_state[confirm_key] = True
+                                st.rerun()
 
                     st.markdown("---")
                     st.subheader("📜 Riwayat Update")
@@ -1689,4 +1712,4 @@ elif st.session_state["menu"] == "Gantt":
         st.info("📝 Belum ada data untuk membuat Gantt Chart.")
 
 st.markdown("---")
-st.caption(f"© 2025 PPIC-DSS System | Enhanced with Procurement Module | v9.1")
+st.caption(f"© 2025 PPIC-DSS System | Enhanced with Procurement Module | v9.5 - Confirmation Safety")
