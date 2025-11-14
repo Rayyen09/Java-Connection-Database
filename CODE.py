@@ -65,6 +65,10 @@ def inject_responsive_css():
         color: white;
         border-radius: 4px;
     }
+    /* Prevent form submission on Enter key */
+    div[data-testid="stForm"] input {
+        /* Allow Enter key to move to next field */
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -216,7 +220,12 @@ def save_uploaded_image(uploaded_file, order_id, product_idx):
 def calculate_cbm(p, l, t):
     """Calculate CBM from dimensions in cm"""
     try:
-        return (float(p) * float(l) * float(t)) / 1000000
+        p_val = float(p) if p else 0
+        l_val = float(l) if l else 0
+        t_val = float(t) if t else 0
+        if p_val > 0 and l_val > 0 and t_val > 0:
+            return (p_val * l_val * t_val) / 1000000
+        return 0
     except:
         return 0
 
@@ -240,6 +249,14 @@ if "procurement" not in st.session_state:
     st.session_state["procurement"] = load_procurement()
 if "menu" not in st.session_state:
     st.session_state["menu"] = "Dashboard"
+
+# Initialize dimension states for real-time CBM calculation
+if "pack_p_val" not in st.session_state:
+    st.session_state["pack_p_val"] = None
+if "pack_l_val" not in st.session_state:
+    st.session_state["pack_l_val"] = None
+if "pack_t_val" not in st.session_state:
+    st.session_state["pack_t_val"] = None
 
 # ===== SIDEBAR MENU =====
 st.sidebar.title("🏭 PPIC-DSS MENU")
@@ -352,89 +369,91 @@ elif st.session_state["menu"] == "Input":
     
     st.markdown("### 📦 Tambah Produk ke Order")
     
-    with st.form("add_product_form", clear_on_submit=True):
-        col_prod1, col_prod2, col_prod3 = st.columns(3)
-        
-        with col_prod1:
-            st.markdown("**Product Information**")
-            products_list = st.session_state["products"]
-            if products_list:
-                produk_option = st.selectbox("Pilih Produk", ["-- Pilih dari Database --"] + products_list, key="form_produk_select")
-                if produk_option == "-- Pilih dari Database --":
-                    produk_name = st.text_input("Atau ketik nama produk baru", key="form_produk_manual")
-                else:
-                    produk_name = produk_option
+    # Non-form inputs for real-time calculation
+    col_prod1, col_prod2, col_prod3 = st.columns(3)
+    
+    with col_prod1:
+        st.markdown("**Product Information**")
+        products_list = st.session_state["products"]
+        if products_list:
+            produk_option = st.selectbox("Pilih Produk", ["-- Pilih dari Database --"] + products_list, key="form_produk_select")
+            if produk_option == "-- Pilih dari Database --":
+                produk_name = st.text_input("Atau ketik nama produk baru", key="form_produk_manual")
             else:
-                produk_name = st.text_input("Nama Produk", key="form_produk")
-            
-            qty = st.number_input("Quantity (pcs)", min_value=1,value=1, key="form_qty")
-            
-            uploaded_image = st.file_uploader("Upload Gambar Produk", 
-                                             type=['jpg', 'jpeg', 'png'], 
-                                             key="form_image")
+                produk_name = produk_option
+        else:
+            produk_name = st.text_input("Nama Produk", key="form_produk")
         
-        with col_prod2:
-            st.markdown("**Specifications**")
-            material = st.text_input("Material", placeholder="Contoh: Kayu Jati, MDF", key="form_material")
-            finishing = st.text_input("Finishing", placeholder="Contoh: Natural, Duco Putih", key="form_finishing")
-            description = st.text_area("Description", placeholder="Deskripsi produk...", height=100, key="form_desc")
-            
-            st.markdown("**Product Size (cm)**")
-            col_ps1, col_ps2, col_ps3 = st.columns(3)
-            with col_ps1:
-                prod_p = st.number_input("P", min_value=0.0, value=0.0, step=0.1, key="prod_p")
-            with col_ps2:
-                prod_l = st.number_input("L", min_value=0.0, value=0.0, step=0.1, key="prod_l")
-            with col_ps3:
-                prod_t = st.number_input("T", min_value=0.0, value=0.0, step=0.1, key="prod_t")
+        qty = st.number_input("Quantity (pcs)", min_value=1, value=1, key="form_qty")
         
-        with col_prod3:
-            st.markdown("**Packing Information**")
-            st.markdown("**Packing Size (cm)**")
-            col_pack1, col_pack2, col_pack3 = st.columns(3)
-            with col_pack1:
-                pack_p = st.number_input("P", min_value=0.0, value=0.0, step=0.1, key="pack_p")
-            with col_pack2:
-                pack_l = st.number_input("L", min_value=0.0, value=0.0, step=0.1, key="pack_l")
-            with col_pack3:
-                pack_t = st.number_input("T", min_value=0.0, value=0.0, step=0.1, key="pack_t")
-            
-            # Calculate CBM
-            cbm_per_pcs = calculate_cbm(pack_p, pack_l, pack_t)
-            st.info(f"CBM per Pcs: {cbm_per_pcs:.6f} m³")
-            
-            keterangan = st.text_area("Keterangan Tambahan", 
-                                     placeholder="Catatan khusus...", 
-                                     height=80, 
-                                     key="form_notes")
+        uploaded_image = st.file_uploader("Upload Gambar Produk", 
+                                         type=['jpg', 'jpeg', 'png'], 
+                                         key="form_image")
+    
+    with col_prod2:
+        st.markdown("**Specifications**")
+        material = st.text_input("Material", placeholder="Contoh: Kayu Jati, MDF", key="form_material")
+        finishing = st.text_input("Finishing", placeholder="Contoh: Natural, Duco Putih", key="form_finishing")
+        description = st.text_area("Description", placeholder="Deskripsi produk...", height=100, key="form_desc")
         
-        submit_product = st.form_submit_button("➕ Tambah Produk ke Order", use_container_width=True, type="primary")
+        st.markdown("**Product Size (cm)**")
+        col_ps1, col_ps2, col_ps3 = st.columns(3)
+        with col_ps1:
+            prod_p = st.number_input("P", min_value=0.0, value=None, step=0.1, key="prod_p", placeholder="0")
+        with col_ps2:
+            prod_l = st.number_input("L", min_value=0.0, value=None, step=0.1, key="prod_l", placeholder="0")
+        with col_ps3:
+            prod_t = st.number_input("T", min_value=0.0, value=None, step=0.1, key="prod_t", placeholder="0")
+    
+    with col_prod3:
+        st.markdown("**Packing Information**")
+        st.markdown("**Packing Size (cm)**")
+        col_pack1, col_pack2, col_pack3 = st.columns(3)
+        with col_pack1:
+            pack_p = st.number_input("P", min_value=0.0, value=None, step=0.1, key="pack_p", placeholder="0")
+        with col_pack2:
+            pack_l = st.number_input("L", min_value=0.0, value=None, step=0.1, key="pack_l", placeholder="0")
+        with col_pack3:
+            pack_t = st.number_input("T", min_value=0.0, value=None, step=0.1, key="pack_t", placeholder="0")
         
-        if submit_product:
-            if produk_name and qty > 0:
-                temp_product = {
-                    "nama": produk_name,
-                    "qty": qty,
-                    "material": material if material else "-",
-                    "finishing": finishing if finishing else "-",
-                    "description": description if description else "-",
-                    "prod_p": prod_p,
-                    "prod_l": prod_l,
-                    "prod_t": prod_t,
-                    "pack_p": pack_p,
-                    "pack_l": pack_l,
-                    "pack_t": pack_t,
-                    "cbm_per_pcs": cbm_per_pcs,
-                    "total_cbm": cbm_per_pcs * qty,
-                    "keterangan": keterangan if keterangan else "-",
-                    "image": uploaded_image
-                }
-                
-                st.session_state["input_products"].append(temp_product)
-                st.success(f"✅ Produk '{produk_name}' ditambahkan! Total produk: {len(st.session_state['input_products'])}")
-                st.rerun()
-            else:
-                st.warning("⚠️ Harap isi nama produk dan quantity!")
+        # Real-time CBM calculation
+        cbm_per_pcs = calculate_cbm(pack_p, pack_l, pack_t)
+        if cbm_per_pcs > 0:
+            st.success(f"📦 CBM per Pcs: **{cbm_per_pcs:.6f} m³**")
+        else:
+            st.info(f"📦 CBM per Pcs: 0.000000 m³")
+        
+        keterangan = st.text_area("Keterangan Tambahan", 
+                                 placeholder="Catatan khusus...", 
+                                 height=80, 
+                                 key="form_notes")
+    
+    # Add product button (outside form to prevent Enter submission)
+    if st.button("➕ Tambah Produk ke Order", use_container_width=True, type="primary", key="add_product_btn"):
+        if produk_name and qty > 0:
+            temp_product = {
+                "nama": produk_name,
+                "qty": qty,
+                "material": material if material else "-",
+                "finishing": finishing if finishing else "-",
+                "description": description if description else "-",
+                "prod_p": prod_p if prod_p else 0,
+                "prod_l": prod_l if prod_l else 0,
+                "prod_t": prod_t if prod_t else 0,
+                "pack_p": pack_p if pack_p else 0,
+                "pack_l": pack_l if pack_l else 0,
+                "pack_t": pack_t if pack_t else 0,
+                "cbm_per_pcs": cbm_per_pcs,
+                "total_cbm": cbm_per_pcs * qty,
+                "keterangan": keterangan if keterangan else "-",
+                "image": uploaded_image
+            }
+            
+            st.session_state["input_products"].append(temp_product)
+            st.success(f"✅ Produk '{produk_name}' ditambahkan! Total produk: {len(st.session_state['input_products'])}")
+            st.rerun()
+        else:
+            st.warning("⚠️ Harap isi nama produk dan quantity!")
     
     if st.session_state["input_products"]:
         st.markdown("---")
@@ -1042,7 +1061,7 @@ elif st.session_state["menu"] == "Procurement":
         if "procurement_items" not in st.session_state:
             st.session_state["procurement_items"] = []
         
-        # Procurement Header Info
+        # Procurement Header Info - OUTSIDE FORM
         st.markdown("#### 📋 Informasi Procurement")
         col_proc1, col_proc2, col_proc3 = st.columns(3)
         
@@ -1070,43 +1089,45 @@ elif st.session_state["menu"] == "Procurement":
         
         st.markdown("---")
         
-        # Add Item Form
+        # Add Item Form - WITH FORM (but submit button will be custom)
         st.markdown("#### 📦 Tambah Item Barang")
         
-        with st.form("add_procurement_item", clear_on_submit=True):
-            col_item1, col_item2, col_item3, col_item4 = st.columns(4)
-            
-            with col_item1:
-                item_name = st.text_input("Nama Barang", placeholder="Contoh: Kayu Jati")
-            
-            with col_item2:
-                item_qty_per_pcs = st.number_input("Jumlah per Pcs Produk", min_value=0.0, value=1.0, step=0.1)
-            
-            with col_item3:
-                item_qty_total = st.number_input("Jumlah Total", min_value=0.0, value=1.0, step=0.1)
-            
-            with col_item4:
-                item_price = st.number_input("Harga per Unit (Rp)", min_value=0, value=0, step=1000)
-            
-            submit_item = st.form_submit_button("➕ Tambah Item", use_container_width=True, type="primary")
-            
-            if submit_item:
-                if item_name:
-                    item_total_price = item_price * item_qty_total
-                    
-                    new_item = {
-                        "Nama Barang": item_name,
-                        "Jumlah per Pcs": item_qty_per_pcs,
-                        "Jumlah Total": item_qty_total,
-                        "Harga per Unit": item_price,
-                        "Harga Total": item_total_price
-                    }
-                    
-                    st.session_state["procurement_items"].append(new_item)
-                    st.success(f"✅ Item '{item_name}' ditambahkan!")
-                    st.rerun()
-                else:
-                    st.warning("⚠️ Nama barang tidak boleh kosong!")
+        col_item1, col_item2, col_item3, col_item4 = st.columns(4)
+        
+        with col_item1:
+            item_name = st.text_input("Nama Barang", placeholder="Contoh: Kayu Jati", key="proc_item_name")
+        
+        with col_item2:
+            item_qty_per_pcs = st.number_input("Jumlah per Pcs Produk", min_value=0.0, value=None, step=0.1, key="proc_item_qty_per", placeholder="0")
+        
+        with col_item3:
+            item_qty_total = st.number_input("Jumlah Total", min_value=0.0, value=None, step=0.1, key="proc_item_qty_total", placeholder="0")
+        
+        with col_item4:
+            item_price = st.number_input("Harga per Unit (Rp)", min_value=0, value=None, step=1000, key="proc_item_price", placeholder="0")
+        
+        # Add item button (outside form)
+        if st.button("➕ Tambah Item", use_container_width=True, type="primary", key="add_proc_item_btn"):
+            if item_name:
+                item_qty_per_val = item_qty_per_pcs if item_qty_per_pcs else 1.0
+                item_qty_total_val = item_qty_total if item_qty_total else 1.0
+                item_price_val = item_price if item_price else 0
+                
+                item_total_price = item_price_val * item_qty_total_val
+                
+                new_item = {
+                    "Nama Barang": item_name,
+                    "Jumlah per Pcs": item_qty_per_val,
+                    "Jumlah Total": item_qty_total_val,
+                    "Harga per Unit": item_price_val,
+                    "Harga Total": item_total_price
+                }
+                
+                st.session_state["procurement_items"].append(new_item)
+                st.success(f"✅ Item '{item_name}' ditambahkan!")
+                st.rerun()
+            else:
+                st.warning("⚠️ Nama barang tidak boleh kosong!")
         
         # Display Current Items
         if st.session_state["procurement_items"]:
@@ -1521,4 +1542,4 @@ elif st.session_state["menu"] == "Gantt":
         st.info("📝 Belum ada data untuk membuat Gantt Chart.")
 
 st.markdown("---")
-st.caption(f"© 2025 PPIC-DSS System | Enhanced with Procurement Module | v7.1")
+st.caption(f"© 2025 PPIC-DSS System | Enhanced with Procurement Module | v7.2")
