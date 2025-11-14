@@ -367,7 +367,7 @@ elif st.session_state["menu"] == "Input":
             else:
                 produk_name = st.text_input("Nama Produk", key="form_produk")
             
-            qty = st.number_input("Quantity (pcs)", min_value=1, key="form_qty")
+            qty = st.number_input("Quantity (pcs)", min_value=1,value=, key="form_qty")
             
             uploaded_image = st.file_uploader("Upload Gambar Produk", 
                                              type=['jpg', 'jpeg', 'png'], 
