@@ -1357,6 +1357,7 @@ elif st.session_state["menu"] == "Tracking":
         st.markdown("---")
         
         st.subheader("📋 Workstation WIP (Work in Progress)")
+        today = datetime.date.today()
 
         stages = get_tracking_stages()
         
@@ -1406,7 +1407,15 @@ elif st.session_state["menu"] == "Tracking":
                         det_col1.write(f"**Buyer:** {row['Buyer']}")
                         det_col2.write(f"**Qty di Tahap Ini:** {qty_in_stage} / {row['Qty']} pcs")
                         
-                        due_date = row['Due Date'].date() if isinstance(row['Due Date'], pd.Timestamp) else row['Due Date']
+                       # FIX: Ensure due_date is datetime.date for comparison
+                        due_date_raw = row['Due Date']
+                        if isinstance(due_date_raw, pd.Timestamp):
+                            due_date = due_date_raw.date()
+                        elif isinstance(due_date_raw, str):
+                            due_date = pd.to_datetime(due_date_raw).date()
+                        else:
+                            due_date = due_date_raw
+                        
                         days_until_due = (due_date - today).days
                         if days_until_due < 0:
                             date_color = "#EF4444"; date_icon = "🔴"
