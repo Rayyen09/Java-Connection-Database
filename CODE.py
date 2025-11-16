@@ -527,7 +527,7 @@ if st.session_state["menu"] == "Dashboard":
             col_m3.metric("✅ Done", done)
             col_m4.metric("📊 Total Qty", f"{total_qty:,}")
 
-        st.markdown("---")
+      
         # Production Status Cards
         st.markdown("#### 🏭 Production Status")
         col_prod1, col_prod2, col_prod3 = st.columns(3)
