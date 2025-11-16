@@ -1229,17 +1229,15 @@ elif st.session_state["menu"] == "Container":
                         # Check if already in cart
                         in_cart = order['Order ID'] in [item['Order ID'] for item in st.session_state["container_cart"]]
                         
-                        # Order card
+                        # Order card - FIXED: Separate variables to avoid f-string issues
+                        border_style = "border-color: #10B981; border-width: 2px;" if in_cart else ""
+                        status_color = "#10B981" if in_cart else "#9CA3AF"
+                        status_text = "✅ In Container" if in_cart else ""
+                        
                         st.markdown(f"""
-                        <div class="order-card" style="{'border-color: #10B981;' if in_cart else ''}">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <div>
-                                    <strong style="color: #3B82F6; font-size: 1.1em;">{order['Order ID']}</strong>
-                                    <span style="color: {'#10B981' if in_cart else '#9CA3AF'}; margin-left: 10px;">
-                                        {'✅ In Container' if in_cart else ''}
-                                    </span>
-                                </div>
-                            </div>
+                        <div class="order-card" style="{border_style}">
+                            <strong style="color: #3B82F6; font-size: 1.1em;">{order['Order ID']}</strong>
+                            <span style="color: {status_color}; margin-left: 10px; font-size: 0.9em;">{status_text}</span>
                         </div>
                         """, unsafe_allow_html=True)
                         
@@ -1477,7 +1475,6 @@ elif st.session_state["menu"] == "Container":
                 st.info("📝 No container simulations saved yet. Create your first simulation in the 'Container Simulator' tab!")
     else:
         st.info("📝 No orders available. Please create orders first in 'Input Pesanan Baru'.")
-
 
 # Continue with other menus (Orders, Progress, Tracking, etc.) - these remain the same as the original code
 # but with the aligned form fixes for Procurement section...
