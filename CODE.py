@@ -752,11 +752,11 @@ elif st.session_state["menu"] == "Input":
             st.markdown("**Product Size (cm)**")
             col_ps1, col_ps2, col_ps3 = st.columns(3)
             with col_ps1:
-                prod_p = st.number_input("P", min_value=0.0, format="%.2f", key="prod_p", step=0.01)
+                prod_p = st.number_input("P", min_value=0.0, value=None, format="%.2f", key="prod_p", step=0.01, placeholder="0.00")
             with col_ps2:
-                prod_l = st.number_input("L", min_value=0.0, format="%.2f", key="prod_l", step=0.01)
+                prod_l = st.number_input("L", min_value=0.0, value=None, format="%.2f", key="prod_l", step=0.01, placeholder="0.00")
             with col_ps3:
-                prod_t = st.number_input("T", min_value=0.0, format="%.2f", key="prod_t", step=0.01)
+                prod_t = st.number_input("T", min_value=0.0, value=None, format="%.2f", key="prod_t", step=0.01, placeholder="0.00")
             
             # Product CBM calculation with 6 decimal places
             product_cbm = calculate_cbm(prod_p, prod_l, prod_t)
@@ -770,11 +770,11 @@ elif st.session_state["menu"] == "Input":
             st.markdown("**Packing Size (cm)**")
             col_pack1, col_pack2, col_pack3 = st.columns(3)
             with col_pack1:
-                pack_p = st.number_input("P", min_value=0.0, format="%.2f", key="pack_p", step=0.01)
+                pack_p = st.number_input("P", min_value=0.0, value=None, format="%.2f", key="pack_p", step=0.01, placeholder="0.00")
             with col_pack2:
-                pack_l = st.number_input("L", min_value=0.0, format="%.2f", key="pack_l", step=0.01)
+                pack_l = st.number_input("L", min_value=0.0, value=None, format="%.2f", key="pack_l", step=0.01, placeholder="0.00")
             with col_pack3:
-                pack_t = st.number_input("T", min_value=0.0, format="%.2f", key="pack_t", step=0.01)
+                pack_t = st.number_input("T", min_value=0.0, value=None, format="%.2f", key="pack_t", step=0.01, placeholder="0.00")
             
             # Real-time CBM calculation with 6 decimal places
             cbm_per_pcs = calculate_cbm(pack_p, pack_l, pack_t)
@@ -1784,13 +1784,13 @@ elif st.session_state["menu"] == "Procurement":
                 item_name = st.text_input("Nama Barang", placeholder="Contoh: Kayu Jati", key="proc_item_name")
             
             with col_item2:
-                item_qty_per_pcs = st.number_input("Jumlah per Pcs", min_value=0.0, format="%.2f", step=1.0, key="proc_item_qty_per")
+                item_qty_per_pcs = st.number_input("Jumlah per Pcs", min_value=0.0, value=None, format="%.2f", step=1.0, key="proc_item_qty_per", placeholder="0.00")
             
             with col_item3:
-                item_qty_total = st.number_input("Jumlah Total", min_value=0.0, format="%.2f", step=1.0, key="proc_item_qty_total")
+                item_qty_total = st.number_input("Jumlah Total", min_value=0.0, value=None, format="%.2f", step=1.0, key="proc_item_qty_total", placeholder="0.00")
             
             with col_item4:
-                item_price = st.number_input("Harga per Unit (Rp)", min_value=0, step=1000, key="proc_item_price")
+                item_price = st.number_input("Harga per Unit (Rp)", min_value=0, value=None, step=1000, key="proc_item_price", placeholder="0")
         
         if st.button("➕ Tambah Item", use_container_width=True, type="primary", key="add_proc_item_btn"):
             if item_name:
