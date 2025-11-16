@@ -415,7 +415,7 @@ if "selected_container_type" not in st.session_state:
     st.session_state["selected_container_type"] = "40 HC (High Cube)"
 
 # ===== SIDEBAR MENU =====
-st.sidebar.title("🏭 PPIC-DSS MENU PT JAVA CONNECTION")
+st.sidebar.title("🏭 PPIC-DSS MENU")
 st.sidebar.markdown("---")
 
 menu_options = {
@@ -448,7 +448,7 @@ if st.session_state["menu"] != "Dashboard":
 
 # ===== MENU: DASHBOARD =====
 if st.session_state["menu"] == "Dashboard":
-    st.title("📊 Dashboard Overview")
+    st.title("📊 Dashboard PT JAVA CONNECTION")
     
     df = st.session_state["data_produksi"]
     
