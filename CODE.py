@@ -415,7 +415,7 @@ if "selected_container_type" not in st.session_state:
     st.session_state["selected_container_type"] = "40 HC (High Cube)"
 
 # ===== SIDEBAR MENU =====
-st.sidebar.title("🏭 PPIC-DSS MENU")
+st.sidebar.title("🏭 PPIC-DSS MENU PT JAVA CONNECTION")
 st.sidebar.markdown("---")
 
 menu_options = {
