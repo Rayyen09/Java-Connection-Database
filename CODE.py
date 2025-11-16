@@ -1808,7 +1808,7 @@ elif st.session_state["menu"] == "Tracking":
                 else:
                     st.write(f"Tidak ada Qty di tahap {stage}.")
             
-            st.markdown("---")
+    
     else:
         st.info("📝 Belum ada order untuk di-tracking.")
 
