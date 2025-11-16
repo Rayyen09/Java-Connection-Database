@@ -526,38 +526,42 @@ if st.session_state["menu"] == "Dashboard":
             col_m3, col_m4 = st.columns(2)
             col_m3.metric("✅ Done", done)
             col_m4.metric("📊 Total Qty", f"{total_qty:,}")
-            
-            # Production Status Cards
-            st.markdown("---")
-            st.markdown("#### 🏭 Production Status")
-            
+
+        st.markdown("---")
+        # Production Status Cards
+        st.markdown("#### 🏭 Production Status")
+        col_prod1, col_prod2, col_prod3 = st.columns(3)
+        
+        with col_prod1:
             # WIP Card
             st.markdown(f"""
             <div class="wip-card">
-                <h4>WIP (Work in Progress)</h4>
-                <h2>{wip_qty:,} pcs</h2>
-                <p>Volume: {wip_cbm:.6f} m³</p>
-                <small>Warehouse → Revisi Fitting 2</small>
+                <h4 style='margin: 0 0 10px 0;'>WIP (Work in Progress)</h4>
+                <h2 style='margin: 5px 0; font-size: 2.5rem;'>{wip_qty:,} pcs</h2>
+                <p style='margin: 5px 0; font-size: 0.9rem;'>Volume: {wip_cbm:.6f} m³</p>
+                <small style='font-size: 0.8rem;'>Warehouse → Revisi Fitting 2</small>
             </div>
             """, unsafe_allow_html=True)
-            
+        
+        with col_prod2:            
             # Finished Goods Card (Packaging)
-            st.markdown(f"""
-            <div class="finished-card" style="margin-top: 10px;">
-                <h4>Produk Jadi (Packaging)</h4>
-                <h2>{finished_qty:,} pcs</h2>
-                <p>Volume: {finished_cbm:.6f} m³</p>
-                <small>Ready for shipment</small>
+           st.markdown(f"""
+            <div class="finished-card">
+                <h4 style='margin: 0 0 10px 0;'>Produk Jadi (Packaging)</h4>
+                <h2 style='margin: 5px 0; font-size: 2.5rem;'>{finished_qty:,} pcs</h2>
+                <p style='margin: 5px 0; font-size: 0.9rem;'>Volume: {finished_cbm:.6f} m³</p>
+                <small style='font-size: 0.8rem;'>Ready for shipment</small>
             </div>
             """, unsafe_allow_html=True)
-            
+        
+        with col_prod3:
             # Shipping Card
-            st.markdown(f"""
-            <div class="shipping-card" style="margin-top: 10px;">
-                <h4>Pengiriman</h4>
-                <h2>{shipping_qty:,} pcs</h2>
-                <p>Volume: {shipping_cbm:.6f} m³</p>
-                <small>In transit / Delivered</small>
+             st.markdown(f"""
+            <div class="shipping-card">
+                <h4 style='margin: 0 0 10px 0;'>Pengiriman</h4>
+                <h2 style='margin: 5px 0; font-size: 2.5rem;'>{shipping_qty:,} pcs</h2>
+                <p style='margin: 5px 0; font-size: 0.9rem;'>Volume: {shipping_cbm:.6f} m³</p>
+                <small style='font-size: 0.8rem;'>In transit / Delivered</small>
             </div>
             """, unsafe_allow_html=True)
         
