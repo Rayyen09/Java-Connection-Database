@@ -1675,7 +1675,6 @@ elif st.session_state["menu"] == "Progress":
                                 st.session_state[confirm_key] = True
                                 st.rerun()
 
-                    st.markdown("---")
 # ===== MENU: TRACKING PRODUKSI =====
 elif st.session_state["menu"] == "Tracking":
     st.header("🔍 TRACKING PRODUKSI PER WORKSTATION")
