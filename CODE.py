@@ -468,11 +468,22 @@ if st.session_state["menu"] == "Dashboard":
         with col_left:
             st.markdown("### 🕒 Recent Orders")
             
-            # Search/filter for recent orders
-            search_recent = st.text_input("🔍 Search orders...", key="search_recent_orders")
+            # Buyer filter for recent orders
+            col_filter1, col_filter2 = st.columns([2, 1])
+            with col_filter1:
+                buyers_list = ["-- All Buyers --"] + sorted(df["Buyer"].unique().tolist())
+                selected_buyer_filter = st.selectbox("Filter by Buyer", buyers_list, key="recent_buyer_filter")
             
-            recent_df = df.sort_values("Order Date", ascending=False)
+            with col_filter2:
+                search_recent = st.text_input("🔍 Search", key="search_recent_orders", placeholder="Order ID/Product")
             
+            # Apply buyer filter
+            if selected_buyer_filter and selected_buyer_filter != "-- All Buyers --":
+                recent_df = df[df["Buyer"] == selected_buyer_filter].sort_values("Order Date", ascending=False)
+            else:
+                recent_df = df.sort_values("Order Date", ascending=False)
+            
+            # Apply search filter
             if search_recent:
                 recent_df = recent_df[
                     recent_df["Order ID"].str.contains(search_recent, case=False, na=False) | 
@@ -480,11 +491,34 @@ if st.session_state["menu"] == "Dashboard":
                     recent_df["Produk"].str.contains(search_recent, case=False, na=False)
                 ]
             
-            # Scrollable container for recent orders
+            # Show filtered count
+            if selected_buyer_filter != "-- All Buyers --" or search_recent:
+                st.caption(f"📊 Showing {len(recent_df)} orders")
+            
+            # Scrollable container for recent orders with cubication info
             with st.container():
                 st.markdown('<div class="recent-orders-container">', unsafe_allow_html=True)
                 
                 for idx, row in recent_df.head(20).iterrows():
+                    # Get tracking data for workstation distribution
+                    try:
+                        tracking_data = json.loads(row["Tracking"])
+                        product_cbm = float(row.get("Product CBM", 0))
+                        
+                        # Find active workstations (where qty > 0)
+                        active_stations = []
+                        total_tracked_cbm = 0
+                        for stage, data in tracking_data.items():
+                            qty = data.get("qty", 0)
+                            if qty > 0:
+                                stage_cbm = qty * product_cbm
+                                total_tracked_cbm += stage_cbm
+                                active_stations.append((stage, qty, stage_cbm))
+                    except:
+                        active_stations = []
+                        total_tracked_cbm = 0
+                    
+                    # Order header
                     col1, col2, col3, col4 = st.columns([2.5, 2, 1, 0.5])
                     
                     with col1:
@@ -505,6 +539,24 @@ if st.session_state["menu"] == "Dashboard":
                             st.success("✅")
                         else:
                             st.info("🔄")
+                    
+                    # Show workstation distribution with cubication
+                    if active_stations:
+                        st.markdown(f"<small style='color: #9CA3AF;'>📦 Workstation Distribution (Total: {total_tracked_cbm:.6f} m³):</small>", unsafe_allow_html=True)
+                        
+                        # Create compact workstation display
+                        station_info = []
+                        for stage, qty, cbm in active_stations[:3]:  # Show max 3 stations
+                            pct = (cbm / total_tracked_cbm * 100) if total_tracked_cbm > 0 else 0
+                            station_info.append(f"<span style='background: #1F2937; padding: 2px 6px; border-radius: 3px; margin-right: 5px;'>"
+                                              f"<strong>{stage}:</strong> {qty} pcs ({cbm:.6f} m³, {pct:.1f}%)</span>")
+                        
+                        if len(active_stations) > 3:
+                            station_info.append(f"<span style='color: #60A5FA;'>+{len(active_stations)-3} more...</span>")
+                        
+                        st.markdown(" ".join(station_info), unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"<small style='color: #6B7280;'>No active workstation data</small>", unsafe_allow_html=True)
                     
                     st.divider()
                 
@@ -567,134 +619,6 @@ if st.session_state["menu"] == "Dashboard":
         
         st.markdown("---")
         
-        # ===== SECTION 2: PRODUCTION CALENDAR =====
-        col_cal, col_chart = st.columns([2, 1])
-        
-        with col_cal:
-            st.markdown("### 📅 Production Calendar")
-            
-            today = datetime.date.today()
-            current_month = today.month
-            current_year = today.year
-            
-            col_month, col_year = st.columns(2)
-            with col_month:
-                months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", 
-                         "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
-                selected_month = st.selectbox("Bulan", months, index=current_month - 1, key="cal_month")
-                month_num = months.index(selected_month) + 1
-            
-            with col_year:
-                years = list(range(current_year - 1, current_year + 3))
-                selected_year = st.selectbox("Tahun", years, index=1, key="cal_year")
-            
-            # Filter orders by selected month/year
-            df_copy = df.copy()
-            df_copy['Due Date'] = pd.to_datetime(df_copy['Due Date'])
-            df_month = df_copy[(df_copy['Due Date'].dt.month == month_num) & 
-                         (df_copy['Due Date'].dt.year == selected_year)]
-            
-            if not df_month.empty:
-                st.markdown(f"**📌 {len(df_month)} orders di bulan ini**")
-            
-            # Create calendar view
-            import calendar
-            cal = calendar.monthcalendar(selected_year, month_num)
-            
-            days = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"]
-            header_cols = st.columns(7)
-            for i, day in enumerate(days):
-                header_cols[i].markdown(f"<center><b>{day}</b></center>", unsafe_allow_html=True)
-            
-            for week in cal:
-                week_cols = st.columns(7)
-                for i, day in enumerate(week):
-                    if day == 0:
-                        week_cols[i].markdown("")
-                    else:
-                        date_obj = datetime.date(selected_year, month_num, day)
-                        
-                        if not df_month.empty:
-                            orders_on_date = df_month[df_month['Due Date'].dt.date == date_obj]
-                            
-                            if len(orders_on_date) > 0:
-                                done_count = len(orders_on_date[orders_on_date['Tracking Status'] == 'Done'])
-                                if done_count == len(orders_on_date):
-                                    bg_color = "#10B981"
-                                elif date_obj < today:
-                                    bg_color = "#EF4444"
-                                elif date_obj == today:
-                                    bg_color = "#F59E0B"
-                                else:
-                                    bg_color = "#3B82F6"
-                                
-                                week_cols[i].markdown(f"""
-                                <div style='background-color: {bg_color}; padding: 5px; border-radius: 5px; text-align: center;'>
-                                    <b style='color: white;'>{day}</b><br>
-                                    <span style='color: white; font-size: 10px;'>{len(orders_on_date)}</span>
-                                </div>
-                                """, unsafe_allow_html=True)
-                            else:
-                                if date_obj == today:
-                                    week_cols[i].markdown(f"<div style='padding: 5px; text-align: center; border: 2px solid #3B82F6; border-radius: 5px;'><b>{day}</b></div>", unsafe_allow_html=True)
-                                else:
-                                    week_cols[i].markdown(f"<div style='padding: 5px; text-align: center;'>{day}</div>", unsafe_allow_html=True)
-                        else:
-                            if date_obj == today:
-                                week_cols[i].markdown(f"<div style='padding: 5px; text-align: center; border: 2px solid #3B82F6; border-radius: 5px;'><b>{day}</b></div>", unsafe_allow_html=True)
-                            else:
-                                week_cols[i].markdown(f"<div style='padding: 5px; text-align: center;'>{day}</div>", unsafe_allow_html=True)
-        
-        with col_chart:
-            st.markdown("### 📊 Status Distribution")
-            
-            status_dist = df["Tracking Status"].value_counts()
-            fig_status = px.pie(
-                values=status_dist.values, 
-                names=status_dist.index,
-                color_discrete_map={"On Going": "#3B82F6", "Done": "#10B981"},
-                hole=0.4
-            )
-            fig_status.update_traces(textposition='inside', textinfo='percent+label')
-            fig_status.update_layout(showlegend=True, height=250, margin=dict(t=0, b=0, l=0, r=0))
-            st.plotly_chart(fig_status, use_container_width=True)
-        
-        st.markdown("---")
-        
-        # ===== SECTION 3: PRODUCTION PROGRESS BY STAGE =====
-        st.markdown("### 🏭 Production Progress by Stage")
-        
-        stages = get_tracking_stages()
-        stage_data = {stage: 0 for stage in stages}
-        
-        for idx, row in df.iterrows():
-            try:
-                tracking_data = json.loads(row["Tracking"])
-                for stage, data in tracking_data.items():
-                    qty = data.get("qty", 0)
-                    if stage in stage_data:
-                        stage_data[stage] += qty
-            except:
-                pass
-        
-        fig_stages = px.bar(
-            x=list(stage_data.values()),
-            y=list(stage_data.keys()),
-            orientation='h',
-            color=list(stage_data.values()),
-            color_continuous_scale='Blues'
-        )
-        fig_stages.update_layout(
-            xaxis_title="Quantity (pcs)",
-            yaxis_title="",
-            showlegend=False,
-            height=300,
-            margin=dict(t=10, b=10)
-        )
-        st.plotly_chart(fig_stages, use_container_width=True)
-    else:
-        st.info("📝 Belum ada data. Silakan input pesanan baru.")
-
 # ===== MENU: INPUT PESANAN BARU =====
 elif st.session_state["menu"] == "Input":
     st.markdown("<h2 style='margin: 0;'>📋 Form Input Pesanan Baru (Multi-Product)</h2>", unsafe_allow_html=True)
