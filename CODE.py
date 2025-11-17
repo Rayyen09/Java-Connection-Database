@@ -47,22 +47,23 @@ def inject_responsive_css():
     st.markdown("""
     """
         /* Buyer Stats Card */
-        .buyer-stats-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 1rem;
-            border-radius: 8px;
-            color: white;
-            margin: 0.5rem 0;
-        }
-        
-        /* Workstation Card */
-        .workstation-card {
-            background: #1F2937;
-            border-left: 4px solid #3B82F6;
-            padding: 1rem;
-            border-radius: 5px;
-            margin: 0.5rem 0;
-        }
+    .buyer-stats-card {
+        background-color: #667eea;
+        background-image: linear-gradient(135deg, #667eea 0, #764ba2 100);
+        padding: 1rem;
+        border-radius: 8px;
+        color: white;
+        margin: 0.5rem 0;
+    }
+    
+    /* Workstation Card */
+    .workstation-card {
+        background: #1F2937;
+        border-left: 4px solid #3B82F6;
+        padding: 1rem;
+        border-radius: 5px;
+        margin: 0.5rem 0;
+    }
     """
 
     <style>
