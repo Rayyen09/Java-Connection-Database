@@ -5,6 +5,7 @@ import json
 import os
 import plotly.express as px
 import plotly.figure_factory as ff
+import plotly.graph_objects as go
 from streamlit.components.v1 import html
 
 # ===== KONFIGURASI DATABASE =====
@@ -13,6 +14,7 @@ BUYER_DB_PATH = "buyers.json"
 PRODUCT_DB_PATH = "products.json"
 PROCUREMENT_DB_PATH = "procurement.json"
 CONTAINER_DB_PATH = "containers.json"
+TEMPLATE_ORDER_DB_PATH = "template_orders.json"
 
 st.set_page_config(
     page_title="PPIC-DSS System", 
@@ -43,6 +45,26 @@ CONTAINER_TYPES = {
 # ===== CSS RESPONSIVE & COMPACT =====
 def inject_responsive_css():
     st.markdown("""
+    """
+        /* Buyer Stats Card */
+        .buyer-stats-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 1rem;
+            border-radius: 8px;
+            color: white;
+            margin: 0.5rem 0;
+        }
+        
+        /* Workstation Card */
+        .workstation-card {
+            background: #1F2937;
+            border-left: 4px solid #3B82F6;
+            padding: 1rem;
+            border-radius: 5px;
+            margin: 0.5rem 0;
+        }
+    """
+
     <style>
     /* Reduce top padding and margins */
     .block-container {
@@ -177,16 +199,16 @@ def load_data():
         try:
             with open(DATABASE_PATH, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                df = pd.DataFrame(data)
-                if not df.empty:
-                    df['Order Date'] = pd.to_datetime(df['Order Date']).dt.date
-                    df['Due Date'] = pd.to_datetime(df['Due Date']).dt.date
-                    if 'History' not in df.columns:
-                        df['History'] = df.apply(lambda x: json.dumps([]), axis=1)
+                df_filtered = pd.DataFrame(data)
+                if not df_filtered.empty:
+                    df_filtered['Order Date'] = pd.to_datetime(df_filtered['Order Date']).dt.date
+                    df_filtered['Due Date'] = pd.to_datetime(df_filtered['Due Date']).dt.date
+                    if 'History' not in df_filtered.columns:
+                        df_filtered['History'] = df_filtered.apply(lambda x: json.dumps([]), axis=1)
                     # Add new columns if not exist
-                    if 'Product CBM' not in df.columns:
-                        df['Product CBM'] = 0.0
-                return df
+                    if 'Product CBM' not in df_filtered.columns:
+                        df_filtered['Product CBM'] = 0.0
+                return df_filtered
         except Exception as e:
             st.error(f"Error loading data: {e}")
     return pd.DataFrame(columns=[
@@ -198,13 +220,13 @@ def load_data():
         "CBM per Pcs", "Total CBM", "Image Path"
     ])
 
-def save_data(df):
+def save_data(df_filtered):
     try:
-        df_copy = df.copy()
-        df_copy['Order Date'] = df_copy['Order Date'].astype(str)
-        df_copy['Due Date'] = df_copy['Due Date'].astype(str)
+        df_filtered_copy = df_filtered.copy()
+        df_filtered_copy['Order Date'] = df_filtered_copy['Order Date'].astype(str)
+        df_filtered_copy['Due Date'] = df_filtered_copy['Due Date'].astype(str)
         with open(DATABASE_PATH, 'w', encoding='utf-8') as f:
-            json.dump(df_copy.to_dict('records'), f, ensure_ascii=False, indent=2)
+            json.dump(df_filtered_copy.to_dict('records'), f, ensure_ascii=False, indent=2)
         return True
     except Exception as e:
         st.error(f"Error saving data: {e}")
@@ -353,14 +375,14 @@ def calculate_cbm(p, l, t):
 
 def get_products_by_buyer(buyer_name):
     """Get unique products for a specific buyer from orders"""
-    df = st.session_state["data_produksi"]
-    if df.empty or not buyer_name:
+    df_filtered = st.session_state["data_produksi"]
+    if df_filtered.empty or not buyer_name:
         return []
     
-    buyer_products = df[df["Buyer"] == buyer_name]["Produk"].unique().tolist()
+    buyer_products = df_filtered[df_filtered["Buyer"] == buyer_name]["Produk"].unique().tolist()
     return sorted(buyer_products)
 
-def calculate_production_metrics(df):
+def calculate_production_metrics(df_filtered):
     """Calculate WIP, Finished Goods, and Shipping metrics"""
     wip_stages = ["Warehouse", "Fitting 1", "Amplas", "Revisi 1", "Spray", "Fitting 2", "Revisi Fitting 2"]
     
@@ -371,7 +393,7 @@ def calculate_production_metrics(df):
     shipping_qty = 0  # Pengiriman stage
     shipping_cbm = 0
     
-    for idx, row in df.iterrows():
+    for idx, row in df_filtered.iterrows():
         try:
             tracking_data = json.loads(row["Tracking"])
             product_cbm = float(row.get("Product CBM", 0))
@@ -392,6 +414,128 @@ def calculate_production_metrics(df):
     
     return wip_qty, wip_cbm, finished_qty, finished_cbm, shipping_qty, shipping_cbm
 
+def calculate_buyer_stats(df_filtered, buyer_name=None):
+    """Calculate detailed statistics for a buyer"""
+    if buyer_name:
+        buyer_df_filtered = df_filtered[df_filtered["Buyer"] == buyer_name]
+    else:
+        buyer_df_filtered = df_filtered
+    
+    if buyer_df_filtered.empty:
+        return None
+    
+    stats = {
+        "total_orders": len(buyer_df_filtered),
+        "total_qty": buyer_df_filtered["Qty"].sum(),
+        "total_cbm": buyer_df_filtered["Total CBM"].sum(),
+        "avg_progress": buyer_df_filtered["Progress"].str.rstrip('%').astype('float').mean(),
+        "completed_orders": len(buyer_df_filtered[buyer_df_filtered["Progress"] == "100%"]),
+        "in_progress_orders": len(buyer_df_filtered[buyer_df_filtered["Progress"] != "100%"])
+    }
+    
+    # Calculate workstation CBM
+    workstation_cbm = {}
+    stages = get_tracking_stages()
+    
+    for stage in stages:
+        stage_cbm = 0
+        stage_qty = 0
+        
+        for idx, row in buyer_df_filtered.iterrows():
+            try:
+                tracking_data = json.loads(row["Tracking"])
+                qty_in_stage = tracking_data.get(stage, {}).get("qty", 0)
+                if qty_in_stage > 0:
+                    cbm_per_pcs = float(row.get("CBM per Pcs", 0))
+                    stage_cbm += qty_in_stage * cbm_per_pcs
+                    stage_qty += qty_in_stage
+            except:
+                pass
+        
+        if stage_cbm > 0:
+            workstation_cbm[stage] = {
+                "cbm": stage_cbm,
+                "qty": stage_qty,
+                "percentage": (stage_cbm / stats["total_cbm"] * 100) if stats["total_cbm"] > 0 else 0
+            }
+    
+    stats["workstation_cbm"] = workstation_cbm
+    return stats
+
+def get_order_date_category(order_date):
+    """Categorize order by date"""
+    today = datetime.date.today()
+    
+    if isinstance(order_date, str):
+        order_date = pd.to_datetime(order_date).date()
+    elif isinstance(order_date, pd.Timestamp):
+        order_date = order_date.date()
+    
+    days_diff = (today - order_date).days
+    
+    if days_diff == 0:
+        return "Today"
+    elif days_diff <= 7:
+        return "This Week"
+    elif days_diff <= 30:
+        return "This Month"
+    else:
+        return "Older"
+
+def load_template_orders():
+    """Load template orders from database"""
+    if os.path.exists(TEMPLATE_ORDER_DB_PATH):
+        try:
+            with open(TEMPLATE_ORDER_DB_PATH, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    return []
+
+def save_template_orders(templates):
+    """Save template orders to database"""
+    try:
+        with open(TEMPLATE_ORDER_DB_PATH, 'w', encoding='utf-8') as f:
+            json.dump(templates, f, ensure_ascii=False, indent=2)
+        return True
+    except:
+        return False
+
+def add_template_order(buyer, produk, template_data):
+    """Add a new template order"""
+    templates = st.session_state["template_orders"]
+    template_id = f"TMPL-{buyer[:3].upper()}-{produk[:5].upper()}-{len(templates)+1}"
+    
+    new_template = {
+        "template_id": template_id,
+        "buyer": buyer,
+        "produk": produk,
+        "data": template_data,
+        "created_at": str(datetime.datetime.now()),
+        "last_used": None,
+        "usage_count": 0
+    }
+    
+    templates.append(new_template)
+    st.session_state["template_orders"] = templates
+    return save_template_orders(templates)
+
+def get_templates_by_buyer_product(buyer, produk):
+    """Get templates for specific buyer and product"""
+    templates = st.session_state["template_orders"]
+    return [t for t in templates if t["buyer"] == buyer and t["produk"] == produk]
+
+def update_template_usage(template_id):
+    """Update template usage statistics"""
+    templates = st.session_state["template_orders"]
+    for template in templates:
+        if template["template_id"] == template_id:
+            template["usage_count"] += 1
+            template["last_used"] = str(datetime.datetime.now())
+            break
+    st.session_state["template_orders"] = templates
+    save_template_orders(templates)
+
 # ===== INISIALISASI =====
 if "data_produksi" not in st.session_state:
     st.session_state["data_produksi"] = load_data()
@@ -405,6 +549,9 @@ if "containers" not in st.session_state:
     st.session_state["containers"] = load_containers()
 if "menu" not in st.session_state:
     st.session_state["menu"] = "Dashboard"
+if "template_orders" not in st.session_state:
+    st.session_state["template_orders"] = load_template_orders()
+
 
 # Initialize container cart
 if "container_cart" not in st.session_state:
@@ -450,17 +597,234 @@ if st.session_state["menu"] != "Dashboard":
 if st.session_state["menu"] == "Dashboard":
     st.title("📊 Dashboard PT JAVA CONNECTION")
     
-    df = st.session_state["data_produksi"]
+    df_filtered = st.session_state["data_produksi"]
     
-    if not df.empty:
+    if not df_filtered.empty:
         # Calculate tracking status
-        df['Tracking Status'] = df.apply(
+        df_filtered['Tracking Status'] = df_filtered.apply(
             lambda row: get_tracking_status_from_progress(row['Progress']), 
             axis=1
         )
         
         # Calculate production metrics
-        wip_qty, wip_cbm, finished_qty, finished_cbm, shipping_qty, shipping_cbm = calculate_production_metrics(df)
+        wip_qty, wip_cbm, finished_qty, finished_cbm, shipping_qty, shipping_cbm = calculate_production_metrics(df_filtered)
+
+         # ===== BUYER FILTER (BARU) =====
+        st.markdown("### 🎯 Filter Dashboard")
+        col_filter1, col_filter2 = st.columns([2, 1])
+        
+        with col_filter1:
+            all_buyers = sorted(df_filtered["Buyer"].unique().tolist())
+            selected_buyer = st.selectbox(
+                "Pilih Buyer (Kosongkan untuk semua)",
+                ["-- Semua Buyer --"] + all_buyers,
+                key="dashboard_buyer_filter"
+            )
+        
+        # Apply buyer filter
+        if selected_buyer and selected_buyer != "-- Semua Buyer --":
+            df_filtered_filtered = df_filtered[df_filtered["Buyer"] == selected_buyer].copy()
+            st.info(f"📊 Menampilkan data untuk: **{selected_buyer}**")
+        else:
+            df_filtered_filtered = df_filtered.copy()
+            st.info(f"📊 Menampilkan data untuk: **Semua Buyer**")
+        
+        st.markdown("---")
+        
+        # Calculate production metrics with filtered data
+        wip_qty, wip_cbm, finished_qty, finished_cbm, shipping_qty, shipping_cbm = calculate_production_metrics(df_filtered_filtered)
+        
+        # ===== BUYER STATISTICS (BARU) =====
+        if selected_buyer and selected_buyer != "-- Semua Buyer --":
+            st.markdown("### 📊 Statistik Buyer")
+            
+            buyer_stats = calculate_buyer_stats(df_filtered_filtered, selected_buyer)
+            
+            if buyer_stats:
+                col_stat1, col_stat2, col_stat3, col_stat4, col_stat5 = st.columns(5)
+                
+                col_stat1.metric("Total Orders", f"{buyer_stats['total_orders']}")
+                col_stat2.metric("Total Qty", f"{buyer_stats['total_qty']:,} pcs")
+                col_stat3.metric("Total CBM", f"{buyer_stats['total_cbm']:.4f} m³")
+                col_stat4.metric("Avg Progress", f"{buyer_stats['avg_progress']:.1f}%")
+                col_stat5.metric("Completed", f"{buyer_stats['completed_orders']}/{buyer_stats['total_orders']}")
+                
+                st.markdown("---")
+                
+                # Workstation CBM Distribution
+                st.markdown("#### 🏭 Distribusi CBM per Workstation")
+                
+                if buyer_stats["workstation_cbm"]:
+                    ws_data = []
+                    for stage, data in buyer_stats["workstation_cbm"].items():
+                        ws_data.append({
+                            "Workstation": stage,
+                            "CBM": data["cbm"],
+                            "Qty": data["qty"],
+                            "Percentage": data["percentage"]
+                        })
+                    
+                    ws_df_filtered = pd.DataFrame(ws_data)
+                    ws_df_filtered = ws_df_filtered.sort_values("CBM", ascending=False)
+                    
+                    col_ws1, col_ws2 = st.columns([2, 1])
+                    
+                    with col_ws1:
+                        fig_ws = px.bar(
+                            ws_df_filtered,
+                            x="Workstation",
+                            y="CBM",
+                            color="CBM",
+                            color_continuous_scale="Blues",
+                            title=f"CBM Distribution - {selected_buyer}"
+                        )
+                        fig_ws.update_layout(showlegend=False, height=300)
+                        st.plotly_chart(fig_ws, use_container_width=True)
+                    
+                    with col_ws2:
+                        for idx, row in ws_df_filtered.iterrows():
+                            st.markdown(f"""
+                            <div class="workstation-card">
+                                <strong style='color: #60A5FA;'>{row['Workstation']}</strong><br>
+                                <span style='color: #10B981;'>📦 {row['Qty']} pcs</span><br>
+                                <span style='color: #F59E0B;'>📏 {row['CBM']:.6f} m³</span><br>
+                                <span style='color: #9CA3AF;'>📊 {row['Percentage']:.1f}%</span>
+                            </div>
+                            """, unsafe_allow_html=True)
+                else:
+                    st.info("Tidak ada data di workstation untuk buyer ini")
+                
+                st.markdown("---")
+        
+        # ===== PROGRESS BY TIME PERIOD (BARU) =====
+        st.markdown("### 📅 Progress Orders by Time Period")
+        
+        df_filtered_filtered['Date Category'] = df_filtered_filtered['Order Date'].apply(get_order_date_category)
+        df_filtered_filtered['Progress_Num'] = df_filtered_filtered['Progress'].str.rstrip('%').astype('float')
+        
+        date_categories = ["Today", "This Week", "This Month", "Older"]
+        
+        col_date1, col_date2 = st.columns([2, 1])
+        
+        with col_date1:
+            progress_by_date = []
+            
+            for category in date_categories:
+                cat_df_filtered = df_filtered_filtered[df_filtered_filtered['Date Category'] == category]
+                if not cat_df_filtered.empty:
+                    completed = len(cat_df_filtered[cat_df_filtered['Progress_Num'] == 100])
+                    in_progress = len(cat_df_filtered[cat_df_filtered['Progress_Num'] < 100])
+                    avg_progress = cat_df_filtered['Progress_Num'].mean()
+                    
+                    progress_by_date.append({
+                        "Period": category,
+                        "Completed": completed,
+                        "In Progress": in_progress,
+                        "Avg Progress": avg_progress,
+                        "Total": len(cat_df_filtered)
+                    })
+            
+            if progress_by_date:
+                prog_df_filtered = pd.DataFrame(progress_by_date)
+                
+                fig_prog = go.Figure()
+                
+                fig_prog.add_trace(go.Bar(
+                    name='Completed',
+                    x=prog_df_filtered['Period'],
+                    y=prog_df_filtered['Completed'],
+                    marker_color='#10B981'
+                ))
+                
+                fig_prog.add_trace(go.Bar(
+                    name='In Progress',
+                    x=prog_df_filtered['Period'],
+                    y=prog_df_filtered['In Progress'],
+                    marker_color='#F59E0B'
+                ))
+                
+                fig_prog.update_layout(
+                    barmode='group',
+                    title='Orders Status by Time Period',
+                    xaxis_title='Period',
+                    yaxis_title='Number of Orders',
+                    height=300
+                )
+                
+                st.plotly_chart(fig_prog, use_container_width=True)
+        
+        with col_date2:
+            for item in progress_by_date:
+                completion_rate = (item['Completed'] / item['Total'] * 100) if item['Total'] > 0 else 0
+                
+                st.markdown(f"""
+                <div class="buyer-stats-card">
+                    <h4 style='margin: 0 0 10px 0;'>{item['Period']}</h4>
+                    <p style='margin: 5px 0;'>Total: <strong>{item['Total']}</strong></p>
+                    <p style='margin: 5px 0;'>✅ Completed: <strong>{item['Completed']}</strong></p>
+                    <p style='margin: 5px 0;'>🔄 In Progress: <strong>{item['In Progress']}</strong></p>
+                    <p style='margin: 5px 0;'>📊 Avg: <strong>{item['Avg Progress']:.1f}%</strong></p>
+                    <p style='margin: 5px 0;'>📈 Rate: <strong>{completion_rate:.1f}%</strong></p>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # ===== BUYER COMPARISON (BARU - hanya muncul jika semua buyer) =====
+        if selected_buyer == "-- Semua Buyer --":
+            st.markdown("### 👥 Comparison by Buyer")
+            
+            buyers_list = df_filtered["Buyer"].unique().tolist()
+            buyer_comparison = []
+            
+            for buyer in buyers_list:
+                buyer_data = df_filtered[df_filtered["Buyer"] == buyer]
+                total_cbm = buyer_data["Total CBM"].sum()
+                total_qty = buyer_data["Qty"].sum()
+                avg_progress = buyer_data["Progress"].str.rstrip('%').astype('float').mean()
+                completed = len(buyer_data[buyer_data["Progress"] == "100%"])
+                
+                buyer_comparison.append({
+                    "Buyer": buyer,
+                    "Orders": len(buyer_data),
+                    "Total Qty": total_qty,
+                    "Total CBM": total_cbm,
+                    "Avg Progress": avg_progress,
+                    "Completed": completed
+                })
+            
+            comp_df_filtered = pd.DataFrame(buyer_comparison)
+            comp_df_filtered = comp_df_filtered.sort_values("Total CBM", ascending=False)
+            
+            col_comp1, col_comp2 = st.columns(2)
+            
+            with col_comp1:
+                fig_buyer_cbm = px.bar(
+                    comp_df_filtered,
+                    x="Buyer",
+                    y="Total CBM",
+                    color="Total CBM",
+                    color_continuous_scale="Viridis",
+                    title="Total CBM by Buyer"
+                )
+                fig_buyer_cbm.update_layout(showlegend=False, height=300)
+                st.plotly_chart(fig_buyer_cbm, use_container_width=True)
+            
+            with col_comp2:
+                fig_buyer_prog = px.scatter(
+                    comp_df_filtered,
+                    x="Total Qty",
+                    y="Avg Progress",
+                    size="Total CBM",
+                    color="Buyer",
+                    title="Progress vs Quantity by Buyer",
+                    hover_data=["Orders", "Completed"]
+                )
+                fig_buyer_prog.update_layout(height=300)
+                st.plotly_chart(fig_buyer_prog, use_container_width=True)
+            
+            st.markdown("---")
+
         
         # ===== SECTION 1: TOP ROW - RECENT ORDERS + KEY METRICS =====
         col_left, col_right = st.columns([3, 2])
@@ -471,20 +835,20 @@ if st.session_state["menu"] == "Dashboard":
             # Search/filter for recent orders
             search_recent = st.text_input("🔍 Search orders...", key="search_recent_orders")
             
-            recent_df = df.sort_values("Order Date", ascending=False)
+            recent_df_filtered = df_filtered.sort_values("Order Date", ascending=False)
             
             if search_recent:
-                recent_df = recent_df[
-                    recent_df["Order ID"].str.contains(search_recent, case=False, na=False) | 
-                    recent_df["Buyer"].str.contains(search_recent, case=False, na=False) |
-                    recent_df["Produk"].str.contains(search_recent, case=False, na=False)
+                recent_df_filtered_filtered = recent_df_filtered[
+                    recent_df_filtered["Order ID"].str.contains(search_recent, case=False, na=False) | 
+                    recent_df_filtered["Buyer"].str.contains(search_recent, case=False, na=False) |
+                    recent_df_filtered["Produk"].str.contains(search_recent, case=False, na=False)
                 ]
             
             # Scrollable container for recent orders
             with st.container():
                 st.markdown('<div class="recent-orders-container">', unsafe_allow_html=True)
                 
-                for idx, row in recent_df.head(20).iterrows():
+                for idx, row in recent_df_filtered.head(20).iterrows():
                     col1, col2, col3, col4 = st.columns([2.5, 2, 1, 0.5])
                     
                     with col1:
@@ -514,10 +878,10 @@ if st.session_state["menu"] == "Dashboard":
             st.markdown("### 📈 Key Metrics")
             
             # Compact metrics
-            total_orders = len(df)
-            ongoing = len(df[df["Tracking Status"] == "On Going"])
-            done = len(df[df["Tracking Status"] == "Done"])
-            total_qty = df["Qty"].sum()
+            total_orders = len(df_filtered)
+            ongoing = len(df_filtered[df_filtered["Tracking Status"] == "On Going"])
+            done = len(df_filtered[df_filtered["Tracking Status"] == "Done"])
+            total_qty = df_filtered["Qty"].sum()
             
             col_m1, col_m2 = st.columns(2)
             col_m1.metric("📦 Total Orders", total_orders)
@@ -589,13 +953,13 @@ if st.session_state["menu"] == "Dashboard":
                 selected_year = st.selectbox("Tahun", years, index=1, key="cal_year")
             
             # Filter orders by selected month/year
-            df_copy = df.copy()
-            df_copy['Due Date'] = pd.to_datetime(df_copy['Due Date'])
-            df_month = df_copy[(df_copy['Due Date'].dt.month == month_num) & 
-                         (df_copy['Due Date'].dt.year == selected_year)]
+            df_filtered_copy = df_filtered.copy()
+            df_filtered_copy['Due Date'] = pd.to_datetime(df_filtered_copy['Due Date'])
+            df_filtered_month = df_filtered_copy[(df_filtered_copy['Due Date'].dt.month == month_num) & 
+                         (df_filtered_copy['Due Date'].dt.year == selected_year)]
             
-            if not df_month.empty:
-                st.markdown(f"**📌 {len(df_month)} orders di bulan ini**")
+            if not df_filtered_month.empty:
+                st.markdown(f"**📌 {len(df_filtered_month)} orders di bulan ini**")
             
             # Create calendar view
             import calendar
@@ -614,8 +978,8 @@ if st.session_state["menu"] == "Dashboard":
                     else:
                         date_obj = datetime.date(selected_year, month_num, day)
                         
-                        if not df_month.empty:
-                            orders_on_date = df_month[df_month['Due Date'].dt.date == date_obj]
+                        if not df_filtered_month.empty:
+                            orders_on_date = df_filtered_month[df_filtered_month['Due Date'].dt.date == date_obj]
                             
                             if len(orders_on_date) > 0:
                                 done_count = len(orders_on_date[orders_on_date['Tracking Status'] == 'Done'])
@@ -648,7 +1012,7 @@ if st.session_state["menu"] == "Dashboard":
         with col_chart:
             st.markdown("### 📊 Status Distribution")
             
-            status_dist = df["Tracking Status"].value_counts()
+            status_dist = df_filtered["Tracking Status"].value_counts()
             fig_status = px.pie(
                 values=status_dist.values, 
                 names=status_dist.index,
@@ -667,7 +1031,7 @@ if st.session_state["menu"] == "Dashboard":
         stages = get_tracking_stages()
         stage_data = {stage: 0 for stage in stages}
         
-        for idx, row in df.iterrows():
+        for idx, row in df_filtered.iterrows():
             try:
                 tracking_data = json.loads(row["Tracking"])
                 for stage, data in tracking_data.items():
@@ -698,7 +1062,67 @@ if st.session_state["menu"] == "Dashboard":
 # ===== MENU: INPUT PESANAN BARU =====
 elif st.session_state["menu"] == "Input":
     st.markdown("<h2 style='margin: 0;'>📋 Form Input Pesanan Baru (Multi-Product)</h2>", unsafe_allow_html=True)
+    st.markdown("### 📚 Quick Order from Template")
     
+    col_tmpl1, col_tmpl2, col_tmpl3 = st.columns([2, 2, 1])
+    
+    with col_tmpl1:
+        buyers_list = get_buyer_names()
+        template_buyer = st.selectbox("Pilih Buyer", [""] + buyers_list, key="template_buyer_select")
+    
+    with col_tmpl2:
+        if template_buyer:
+            buyer_products = get_products_by_buyer(template_buyer)
+            if buyer_products:
+                template_product = st.selectbox("Pilih Produk", [""] + buyer_products, key="template_product_select")
+            else:
+                st.info("Buyer ini belum punya order")
+                template_product = None
+        else:
+            template_product = st.selectbox("Pilih Produk", ["Pilih buyer terlebih dahulu"], disabled=True, key="template_product_disabled")
+    
+    with col_tmpl3:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🔍 Cari Template", use_container_width=True, disabled=not (template_buyer and template_product)):
+            templates = get_templates_by_buyer_product(template_buyer, template_product)
+            st.session_state["found_templates"] = templates
+    
+    # Display found templates
+    if st.session_state.get("found_templates"):
+        templates = st.session_state["found_templates"]
+        
+        st.markdown(f"**📋 Ditemukan {len(templates)} template**")
+        
+        for tmpl_idx, template in enumerate(templates):
+            with st.expander(f"Template #{tmpl_idx + 1} | Used {template.get('usage_count', 0)}x", expanded=False):
+                template_data = template["data"]
+                
+                st.write(f"**Material:** {template_data.get('material', '-')}")
+                st.write(f"**Finishing:** {template_data.get('finishing', '-')}")
+                st.write(f"**Packing Size:** {template_data.get('pack_p', 0)} x {template_data.get('pack_l', 0)} x {template_data.get('pack_t', 0)} cm")
+                st.write(f"**CBM per Pcs:** {template_data.get('cbm_per_pcs', 0):.6f} m³")
+                
+                col_use1, col_use2 = st.columns([3, 1])
+                
+                with col_use1:
+                    new_qty = st.number_input(
+                        "Quantity untuk order baru",
+                        min_value=1,
+                        value=template_data.get('qty', 1),
+                        key=f"template_qty_{tmpl_idx}"
+                    )
+                
+                with col_use2:
+                    if st.button("✅ Gunakan", key=f"use_template_{tmpl_idx}", use_container_width=True, type="primary"):
+                        st.session_state["prefill_buyer"] = template_buyer
+                        st.session_state["prefill_product"] = template_product
+                        st.session_state["prefill_data"] = template_data
+                        st.session_state["prefill_qty"] = new_qty
+                        update_template_usage(template["template_id"])
+                        st.success("✅ Template loaded!")
+                        st.rerun()
+    
+    st.markdown("---")
     if "input_products" not in st.session_state:
         st.session_state["input_products"] = []
     
@@ -720,6 +1144,7 @@ elif st.session_state["menu"] == "Input":
         prioritas = st.selectbox("Prioritas", ["High", "Medium", "Low"], key="input_priority")
     
     st.markdown("---")
+    
     st.markdown("#### 📦 Tambah Produk ke Order")
     
     # Create properly aligned columns for form
@@ -746,7 +1171,7 @@ elif st.session_state["menu"] == "Input":
         
         with col2:
             st.markdown("**Specifications**")
-            material = st.text_input("Material", placeholder="Contoh: Kayu Jati, MDF", key="form_material")
+            material = st.text_input("Material", placeholder="Contoh: Kayu Jati, Mdf_filtered", key="form_material")
             finishing = st.text_input("Finishing", placeholder="Contoh: Natural, Duco Putih", key="form_finishing")
             
             st.markdown("**Product Size (cm)**")
@@ -790,9 +1215,10 @@ elif st.session_state["menu"] == "Input":
             description = st.text_area("Description", placeholder="Deskripsi produk...", height=50, key="form_desc")
     
     keterangan = st.text_area("Keterangan Tambahan", placeholder="Catatan khusus...", height=50, key="form_notes")
-    
+
+    save_as_template = st.checkbox("💾 Simpan sebagai template", key="save_template_check")
     # Add product button
-    if st.button("➕ Tambah Produk ke Order", use_container_width=True, type="primary", key="add_product_btn"):
+    if add_product_btn:
         if produk_name and qty > 0:
             temp_product = {
                 "nama": produk_name,
@@ -814,6 +1240,29 @@ elif st.session_state["menu"] == "Input":
             }
             
             st.session_state["input_products"].append(temp_product)
+            if save_as_template and buyer and produk_name:
+                template_data = {
+                    "qty": qty,
+                    "material": material,
+                    "finishing": finishing,
+                    "prod_p": prod_p,
+                    "prod_l": prod_l,
+                    "prod_t": prod_t,
+                    "pack_p": pack_p,
+                    "pack_l": pack_l,
+                    "pack_t": pack_t,
+                    "cbm_per_pcs": cbm_per_pcs,
+                }
+                
+                if add_template_order(buyer, produk_name, template_data):
+                    st.success(f"✅ Produk ditambahkan dan disimpan sebagai template!")
+                else:
+                    st.success(f"✅ Produk ditambahkan!")
+            else:
+                st.success(f"✅ Produk ditambahkan!")
+            
+            st.rerun()
+
             st.success(f"✅ Produk '{produk_name}' ditambahkan! Total produk: {len(st.session_state['input_products'])}")
             st.rerun()
         else:
@@ -904,9 +1353,9 @@ elif st.session_state["menu"] == "Input":
                         
                         new_orders.append(order_data)
                     
-                    new_df = pd.DataFrame(new_orders)
+                    new_df_filtered = pd.DataFrame(new_orders)
                     st.session_state["data_produksi"] = pd.concat(
-                        [st.session_state["data_produksi"], new_df], ignore_index=True
+                        [st.session_state["data_produksi"], new_df_filtered], ignore_index=True
                     )
                     
                     if save_data(st.session_state["data_produksi"]):
@@ -920,31 +1369,31 @@ elif st.session_state["menu"] == "Input":
 elif st.session_state["menu"] == "Orders":
     st.header("📦 DAFTAR ORDER")
     
-    df = st.session_state["data_produksi"]
+    df_filtered = st.session_state["data_produksi"]
     
-    if not df.empty:
+    if not df_filtered.empty:
         col_f1, col_f2 = st.columns(2)
         with col_f1:
-            filter_buyer = st.multiselect("Filter Buyer", df["Buyer"].unique().tolist())
+            filter_buyer = st.multiselect("Filter Buyer", df_filtered["Buyer"].unique().tolist())
         with col_f2:
             search_order = st.text_input("🔍 Cari Order ID / Produk")
         
-        df_filtered = df.copy()
+        df_filtered_filtered = df_filtered.copy()
         if filter_buyer:
-            df_filtered = df_filtered[df_filtered["Buyer"].isin(filter_buyer)]
+            df_filtered_filtered = df_filtered_filtered[df_filtered_filtered["Buyer"].isin(filter_buyer)]
         if search_order:
-            df_filtered = df_filtered[
-                df_filtered["Order ID"].str.contains(search_order, case=False, na=False) | 
-                df_filtered["Produk"].str.contains(search_order, case=False, na=False)
+            df_filtered_filtered = df_filtered_filtered[
+                df_filtered_filtered["Order ID"].str.contains(search_order, case=False, na=False) | 
+                df_filtered_filtered["Produk"].str.contains(search_order, case=False, na=False)
             ]
         
         st.markdown("---")
-        st.info(f"📦 Menampilkan {len(df_filtered)} order dari {df_filtered['Buyer'].nunique()} buyer")
+        st.info(f"📦 Menampilkan {len(df_filtered_filtered)} order dari {df_filtered_filtered['Buyer'].nunique()} buyer")
         
-        buyers = df_filtered["Buyer"].unique()
+        buyers = df_filtered_filtered["Buyer"].unique()
         
         for buyer in sorted(buyers):
-            buyer_orders = df_filtered[df_filtered["Buyer"] == buyer]
+            buyer_orders = df_filtered_filtered[df_filtered_filtered["Buyer"] == buyer]
             buyer_count = len(buyer_orders)
             
             with st.expander(f"👤 **{buyer}** ({buyer_count} orders)", expanded=False):
@@ -1137,7 +1586,7 @@ elif st.session_state["menu"] == "Orders":
 elif st.session_state["menu"] == "Container":
     st.header("🚢 CONTAINER LOADING SIMULATION")
     
-    df = st.session_state["data_produksi"]
+    df_filtered = st.session_state["data_produksi"]
     
     # Add CSS for order cards
     st.markdown("""
@@ -1158,7 +1607,7 @@ elif st.session_state["menu"] == "Container":
     </style>
     """, unsafe_allow_html=True)
     
-    if not df.empty:
+    if not df_filtered.empty:
         tab1, tab2 = st.tabs(["📦 Container Simulator", "📋 Container History"])
         
         with tab1:
@@ -1198,34 +1647,34 @@ elif st.session_state["menu"] == "Container":
                 col_filter1, col_filter2, col_filter3 = st.columns(3)
                 
                 with col_filter1:
-                    filter_buyer = st.multiselect("Filter by Buyer", df["Buyer"].unique().tolist(), key="sim_buyer_filter")
+                    filter_buyer = st.multiselect("Filter by Buyer", df_filtered["Buyer"].unique().tolist(), key="sim_buyer_filter")
                 
                 with col_filter2:
-                    filter_product = st.multiselect("Filter by Product", df["Produk"].unique().tolist(), key="sim_product_filter")
+                    filter_product = st.multiselect("Filter by Product", df_filtered["Produk"].unique().tolist(), key="sim_product_filter")
                 
                 with col_filter3:
                     search_order = st.text_input("🔍 Search Order ID", key="sim_search")
                 
                 # Apply filters
-                df_filtered = df.copy()
+                df_filtered_filtered = df_filtered.copy()
                 if filter_buyer:
-                    df_filtered = df_filtered[df_filtered["Buyer"].isin(filter_buyer)]
+                    df_filtered_filtered = df_filtered_filtered[df_filtered_filtered["Buyer"].isin(filter_buyer)]
                 if filter_product:
-                    df_filtered = df_filtered[df_filtered["Produk"].isin(filter_product)]
+                    df_filtered_filtered = df_filtered_filtered[df_filtered_filtered["Produk"].isin(filter_product)]
                 if search_order:
-                    df_filtered = df_filtered[df_filtered["Order ID"].str.contains(search_order, case=False, na=False)]
+                    df_filtered_filtered = df_filtered_filtered[df_filtered_filtered["Order ID"].str.contains(search_order, case=False, na=False)]
                 
                 # Filter out orders with zero CBM
-                df_filtered = df_filtered[df_filtered["Total CBM"] > 0]
+                df_filtered_filtered = df_filtered_filtered[df_filtered_filtered["Total CBM"] > 0]
                 
-                st.info(f"📦 {len(df_filtered)} orders available for simulation")
+                st.info(f"📦 {len(df_filtered_filtered)} orders available for simulation")
                 
                 # Display available orders with better styling
-                if not df_filtered.empty:
+                if not df_filtered_filtered.empty:
                     # Sort by due date
-                    df_filtered_sorted = df_filtered.sort_values("Due Date")
+                    df_filtered_filtered_sorted = df_filtered_filtered.sort_values("Due Date")
                     
-                    for idx, order in df_filtered_sorted.iterrows():
+                    for idx, order in df_filtered_filtered_sorted.iterrows():
                         # Check if already in cart
                         in_cart = order['Order ID'] in [item['Order ID'] for item in st.session_state["container_cart"]]
                         
@@ -1436,13 +1885,13 @@ elif st.session_state["menu"] == "Container":
                         st.markdown("#### Items in Container:")
                         
                         # Create summary table
-                        items_df = pd.DataFrame(container['items'])
-                        if not items_df.empty:
-                            display_df = items_df[['Order ID', 'Buyer', 'Produk', 'Qty', 'Total CBM']]
-                            display_df['Total CBM'] = display_df['Total CBM'].apply(lambda x: f"{x:.6f} m³")
-                            display_df['Qty'] = display_df['Qty'].apply(lambda x: f"{x:,} pcs")
+                        items_df_filtered = pd.DataFrame(container['items'])
+                        if not items_df_filtered.empty:
+                            display_df_filtered = items_df_filtered[['Order ID', 'Buyer', 'Produk', 'Qty', 'Total CBM']]
+                            display_df_filtered['Total CBM'] = display_df_filtered['Total CBM'].apply(lambda x: f"{x:.6f} m³")
+                            display_df_filtered['Qty'] = display_df_filtered['Qty'].apply(lambda x: f"{x:,} pcs")
                             
-                            st.dataframe(display_df, use_container_width=True, hide_index=True)
+                            st.dataframe(display_df_filtered, use_container_width=True, hide_index=True)
                             
                             # Summary statistics
                             st.markdown("---")
@@ -1450,10 +1899,10 @@ elif st.session_state["menu"] == "Container":
                             with col_sum1:
                                 st.metric("Total Orders", len(container['items']))
                             with col_sum2:
-                                unique_buyers = items_df['Buyer'].nunique()
+                                unique_buyers = items_df_filtered['Buyer'].nunique()
                                 st.metric("Unique Buyers", unique_buyers)
                             with col_sum3:
-                                unique_products = items_df['Produk'].nunique()
+                                unique_products = items_df_filtered['Produk'].nunique()
                                 st.metric("Unique Products", unique_products)
                         
                         # Delete button
@@ -1483,9 +1932,9 @@ elif st.session_state["menu"] == "Container":
 elif st.session_state["menu"] == "Progress":
     st.header("⚙️ UPDATE PROGRESS PRODUKSI")
     
-    df = st.session_state["data_produksi"]
+    df_filtered = st.session_state["data_produksi"]
     
-    if df.empty:
+    if df_filtered.empty:
         st.warning("📝 Belum ada order untuk diupdate.")
     else:
         st.markdown("### 📦 Pilih Order untuk Update")
@@ -1493,13 +1942,13 @@ elif st.session_state["menu"] == "Progress":
         col_select1, col_select2 = st.columns(2)
         
         with col_select1:
-            buyers_list = ["-- Pilih Buyer --"] + sorted(df["Buyer"].unique().tolist())
+            buyers_list = ["-- Pilih Buyer --"] + sorted(df_filtered["Buyer"].unique().tolist())
             selected_buyer = st.selectbox("1️⃣ Pilih Buyer", buyers_list, key="progress_select_buyer")
         
         with col_select2:
             if selected_buyer and selected_buyer != "-- Pilih Buyer --":
-                buyer_df = df[df["Buyer"] == selected_buyer]
-                products_list = ["-- Pilih Produk --"] + sorted(buyer_df["Produk"].unique().tolist())
+                buyer_df_filtered = df_filtered[df_filtered["Buyer"] == selected_buyer]
+                products_list = ["-- Pilih Produk --"] + sorted(buyer_df_filtered["Produk"].unique().tolist())
                 selected_product = st.selectbox("2️⃣ Pilih Produk", products_list, key="progress_select_product")
             else:
                 st.selectbox("2️⃣ Pilih Produk", ["-- Pilih Buyer Terlebih Dahulu --"], disabled=True, key="progress_select_product_disabled")
@@ -1508,9 +1957,9 @@ elif st.session_state["menu"] == "Progress":
         st.markdown("---")
         
         if selected_buyer and selected_buyer != "-- Pilih Buyer --" and selected_product and selected_product != "-- Pilih Produk --":
-            df_filtered = df[(df["Buyer"] == selected_buyer) & (df["Produk"] == selected_product)]
+            df_filtered_filtered = df_filtered[(df_filtered["Buyer"] == selected_buyer) & (df_filtered["Produk"] == selected_product)]
             
-            if df_filtered.empty:
+            if df_filtered_filtered.empty:
                 st.warning("⚠️ Tidak ada order yang sesuai dengan pilihan Anda.")
             else:
                 stage_to_progress = {
@@ -1521,7 +1970,7 @@ elif st.session_state["menu"] == "Progress":
                 }
                 stages_list = get_tracking_stages()
 
-                for order_idx_in_filtered, (idx, order_data) in enumerate(df_filtered.iterrows()):
+                for order_idx_in_filtered, (idx, order_data) in enumerate(df_filtered_filtered.iterrows()):
                     order_id = order_data["Order ID"]
                     
                     st.markdown(f"### 📦 Order: {order_id}")
@@ -1679,9 +2128,9 @@ elif st.session_state["menu"] == "Progress":
 elif st.session_state["menu"] == "Tracking":
     st.header("🔍 TRACKING PRODUKSI PER WORKSTATION")
     
-    df = st.session_state["data_produksi"]
+    df_filtered = st.session_state["data_produksi"]
     
-    if not df.empty:
+    if not df_filtered.empty:
         st.markdown("""
         <div style='background-color: #1E3A8A; padding: 15px; border-radius: 8px; margin-bottom: 25px;'>
             <h3 style='color: white; text-align: center; margin: 0;'>📋 STATUS TRACKING PER TAHAPAN</h3>
@@ -1690,26 +2139,26 @@ elif st.session_state["menu"] == "Tracking":
         
         track_col1, track_col2 = st.columns(2)
         with track_col1:
-            filter_track_buyer = st.multiselect("Filter Buyer", df["Buyer"].unique().tolist(), key="track_buyer_filter")
+            filter_track_buyer = st.multiselect("Filter Buyer", df_filtered["Buyer"].unique().tolist(), key="track_buyer_filter")
         with track_col2:
             search_track_order = st.text_input("🔍 Cari Order ID", key="track_search")
         
-        df_track_filtered = df.copy()
+        df_filtered_track_filtered = df_filtered.copy()
         if filter_track_buyer:
-            df_track_filtered = df_track_filtered[df_track_filtered["Buyer"].isin(filter_track_buyer)]
+            df_filtered_track_filtered = df_filtered_track_filtered[df_filtered_track_filtered["Buyer"].isin(filter_track_buyer)]
         if search_track_order:
-            df_track_filtered = df_track_filtered[df_track_filtered["Order ID"].str.contains(search_track_order, case=False, na=False)]
+            df_filtered_track_filtered = df_filtered_track_filtered[df_filtered_track_filtered["Order ID"].str.contains(search_track_order, case=False, na=False)]
         
         st.markdown("---")
         
         sum_col1, sum_col2, sum_col3, sum_col4 = st.columns(4)
         
-        total_orders_filtered = len(df_track_filtered)
+        total_orders_filtered = len(df_filtered_track_filtered)
         pending_count = 0
         ongoing_count = 0
         done_count = 0
         
-        for idx, row in df_track_filtered.iterrows():
+        for idx, row in df_filtered_track_filtered.iterrows():
             tracking_status = get_tracking_status_from_progress(row['Progress'])
             if tracking_status == "Pending":
                 pending_count += 1
@@ -1732,7 +2181,7 @@ elif st.session_state["menu"] == "Tracking":
         
         stage_wip_data = {stage: {"total_qty": 0, "orders": []} for stage in stages}
         
-        for idx, row in df_track_filtered.iterrows():
+        for idx, row in df_filtered_track_filtered.iterrows():
             try:
                 tracking_data = json.loads(row["Tracking"])
                 if not tracking_data:
@@ -1797,7 +2246,7 @@ elif st.session_state["menu"] == "Tracking":
                         st.progress(int(row['Progress'].rstrip('%')) / 100)
                         
                         # Get original index from dataframe
-                        original_idx = df_track_filtered[df_track_filtered['Order ID'] == row['Order ID']].index[0]
+                        original_idx = df_filtered_track_filtered[df_filtered_track_filtered['Order ID'] == row['Order ID']].index[0]
                         
                         if st.button("⚙️ Update Progress", key=f"track_edit_{row['Order ID']}_{stage}", use_container_width=True, type="secondary"):
                             st.session_state["edit_order_idx"] = original_idx
@@ -1846,12 +2295,12 @@ elif st.session_state["menu"] == "Procurement":
                     
                     if items:
                         # Create DataFrame for display
-                        df_items = pd.DataFrame(items)
-                        df_items["Harga Total"] = df_items["Harga Total"].apply(lambda x: f"Rp {x:,.0f}")
-                        df_items["Harga per Unit"] = df_items["Harga per Unit"].apply(lambda x: f"Rp {x:,.0f}")
+                        df_filtered_items = pd.DataFrame(items)
+                        df_filtered_items["Harga Total"] = df_filtered_items["Harga Total"].apply(lambda x: f"Rp {x:,.0f}")
+                        df_filtered_items["Harga per Unit"] = df_filtered_items["Harga per Unit"].apply(lambda x: f"Rp {x:,.0f}")
                         
                         st.dataframe(
-                            df_items[["Nama Barang", "Jumlah per Pcs", "Jumlah Total", "Harga per Unit", "Harga Total"]],
+                            df_filtered_items[["Nama Barang", "Jumlah per Pcs", "Jumlah Total", "Harga per Unit", "Harga Total"]],
                             use_container_width=True,
                             hide_index=True
                         )
@@ -1906,8 +2355,8 @@ elif st.session_state["menu"] == "Procurement":
         col_proc1, col_proc2, col_proc3 = st.columns(3)
         
         with col_proc1:
-            df = st.session_state["data_produksi"]
-            buyers = df["Buyer"].unique().tolist() if not df.empty else []
+            df_filtered = st.session_state["data_produksi"]
+            buyers = df_filtered["Buyer"].unique().tolist() if not df_filtered.empty else []
             proc_buyer = st.selectbox("Buyer", [""] + buyers if buyers else [""], key="proc_buyer_select")
         
         with col_proc2:
@@ -2156,8 +2605,8 @@ elif st.session_state["menu"] == "Database":
         
         st.markdown("### Current Products")
         if products:
-            product_df = pd.DataFrame({"Product Name": products})
-            st.dataframe(product_df, use_container_width=True, hide_index=True)
+            product_df_filtered = pd.DataFrame({"Product Name": products})
+            st.dataframe(product_df_filtered, use_container_width=True, hide_index=True)
         else:
             st.info("Belum ada produk yang terdaftar")
         
@@ -2198,12 +2647,12 @@ elif st.session_state["menu"] == "Database":
 elif st.session_state["menu"] == "Analytics":
     st.header("📈 ANALISIS & LAPORAN")
     
-    df = st.session_state["data_produksi"]
+    df_filtered = st.session_state["data_produksi"]
     
-    if not df.empty:
+    if not df_filtered.empty:
         # Ensure Due Date is datetime for comparisons
-        df_analysis = df.copy()
-        df_analysis['Due Date'] = pd.to_datetime(df_analysis['Due Date'])
+        df_filtered_analysis = df_filtered.copy()
+        df_filtered_analysis['Due Date'] = pd.to_datetime(df_filtered_analysis['Due Date'])
         
         tab1, tab2, tab3 = st.tabs(["📊 Overview", "👥 By Buyer", "📦 By Product"])
         
@@ -2211,12 +2660,12 @@ elif st.session_state["menu"] == "Analytics":
             st.subheader("Performance Overview")
             col1, col2, col3, col4 = st.columns(4)
             
-            total_qty = df_analysis["Qty"].sum()
+            total_qty = df_filtered_analysis["Qty"].sum()
             # Convert today to Timestamp for comparison
             today_ts = pd.Timestamp(datetime.date.today())
-            on_time_orders = len(df_analysis[df_analysis["Due Date"] >= today_ts])
-            completion_rate = (df_analysis["Progress"].str.rstrip('%').astype('float').mean())
-            total_buyers = df_analysis["Buyer"].nunique()
+            on_time_orders = len(df_filtered_analysis[df_filtered_analysis["Due Date"] >= today_ts])
+            completion_rate = (df_filtered_analysis["Progress"].str.rstrip('%').astype('float').mean())
+            total_buyers = df_filtered_analysis["Buyer"].nunique()
             
             col1.metric("Total Quantity", f"{total_qty:,} pcs")
             col2.metric("On-Time Orders", on_time_orders)
@@ -2228,20 +2677,20 @@ elif st.session_state["menu"] == "Analytics":
             col_chart1, col_chart2 = st.columns(2)
             
             with col_chart1:
-                priority_count = df_analysis["Prioritas"].value_counts()
+                priority_count = df_filtered_analysis["Prioritas"].value_counts()
                 fig_priority = px.bar(x=priority_count.index, y=priority_count.values,
                                    title="Orders by Priority")
                 st.plotly_chart(fig_priority, use_container_width=True)
             
             with col_chart2:
-                stage_count = df_analysis["Proses Saat Ini"].value_counts()
+                stage_count = df_filtered_analysis["Proses Saat Ini"].value_counts()
                 fig_stage = px.pie(values=stage_count.values, names=stage_count.index,
                                      title="Orders by Stage")
                 st.plotly_chart(fig_stage, use_container_width=True)
         
         with tab2:
             st.subheader("Analysis by Buyer")
-            buyer_stats = df_analysis.groupby("Buyer").agg({
+            buyer_stats = df_filtered_analysis.groupby("Buyer").agg({
                 "Order ID": "count",
                 "Qty": "sum",
                 "Progress": lambda x: x.str.rstrip('%').astype('float').mean()
@@ -2256,7 +2705,7 @@ elif st.session_state["menu"] == "Analytics":
         
         with tab3:
             st.subheader("Analysis by Product")
-            product_stats = df_analysis.groupby("Produk").agg({
+            product_stats = df_filtered_analysis.groupby("Produk").agg({
                 "Order ID": "count",
                 "Qty": "sum"
             }).rename(columns={"Order ID": "Total Orders", "Qty": "Total Qty"})
@@ -2273,7 +2722,7 @@ elif st.session_state["menu"] == "Analytics":
         col_exp1, col_exp2 = st.columns(2)
         
         with col_exp1:
-            csv_data = df_analysis.to_csv(index=False).encode("utf-8")
+            csv_data = df_filtered_analysis.to_csv(index=False).encode("utf-8")
             st.download_button(
                 label="📄 Download CSV",
                 data=csv_data,
@@ -2283,7 +2732,7 @@ elif st.session_state["menu"] == "Analytics":
             )
         
         with col_exp2:
-            json_data = df_analysis.to_json(orient='records', indent=2, date_format='iso')
+            json_data = df_filtered_analysis.to_json(orient='records', indent=2, date_format='iso')
             st.download_button(
                 label="📋 Download JSON",
                 data=json_data,
@@ -2298,26 +2747,26 @@ elif st.session_state["menu"] == "Analytics":
 elif st.session_state["menu"] == "Gantt":
     st.header("📊 GANTT CHART PRODUKSI")
     
-    df = st.session_state["data_produksi"]
+    df_filtered = st.session_state["data_produksi"]
     
-    if not df.empty:
+    if not df_filtered.empty:
         col_filter1, col_filter2 = st.columns(2)
         with col_filter1:
-            filter_buyers = st.multiselect("Filter Buyer", df["Buyer"].unique(), default=df["Buyer"].unique())
+            filter_buyers = st.multiselect("Filter Buyer", df_filtered["Buyer"].unique(), default=df_filtered["Buyer"].unique())
         with col_filter2:
             filter_priority = st.multiselect("Filter Priority", ["High", "Medium", "Low"], default=["High", "Medium", "Low"])
         
-        df_filtered = df[df["Buyer"].isin(filter_buyers) & df["Prioritas"].isin(filter_priority)].copy()
+        df_filtered_filtered = df_filtered[df_filtered["Buyer"].isin(filter_buyers) & df_filtered["Prioritas"].isin(filter_priority)].copy()
         
-        if not df_filtered.empty:
-            df_filtered['Progress_Num'] = df_filtered['Progress'].str.rstrip('%').astype('float')
-            df_filtered['Order Date'] = pd.to_datetime(df_filtered['Order Date'])
-            df_filtered['Due Date'] = pd.to_datetime(df_filtered['Due Date'])
-            df_filtered['Duration'] = (df_filtered['Due Date'] - df_filtered['Order Date']).dt.days
+        if not df_filtered_filtered.empty:
+            df_filtered_filtered['Progress_Num'] = df_filtered_filtered['Progress'].str.rstrip('%').astype('float')
+            df_filtered_filtered['Order Date'] = pd.to_datetime(df_filtered_filtered['Order Date'])
+            df_filtered_filtered['Due Date'] = pd.to_datetime(df_filtered_filtered['Due Date'])
+            df_filtered_filtered['Duration'] = (df_filtered_filtered['Due Date'] - df_filtered_filtered['Order Date']).dt.days
             
             gantt_data = []
             
-            for idx, row in df_filtered.iterrows():
+            for idx, row in df_filtered_filtered.iterrows():
                 task_name = f"{row['Order ID']} - {row['Produk'][:30]}"
                 progress_pct = row['Progress_Num']
                 
@@ -2349,12 +2798,12 @@ elif st.session_state["menu"] == "Gantt":
                     x0=today_date,
                     y0=-0.5,
                     x1=today_date,
-                    y1=len(df_filtered) - 0.5,
+                    y1=len(df_filtered_filtered) - 0.5,
                     line=dict(color="#EF4444", width=2, dash="dash")
                 )
                 
                 fig.update_layout(
-                    height=max(450, len(df_filtered) * 70),
+                    height=max(450, len(df_filtered_filtered) * 70),
                     xaxis_title="Timeline",
                     yaxis_title="Orders",
                     hovermode='closest'
@@ -2365,12 +2814,12 @@ elif st.session_state["menu"] == "Gantt":
                 st.markdown("---")
                 st.subheader("📋 Order Timeline Summary")
                 
-                summary_df = df_filtered[["Order ID", "Buyer", "Produk", "Order Date", "Due Date", 
+                summary_df_filtered = df_filtered_filtered[["Order ID", "Buyer", "Produk", "Order Date", "Due Date", 
                                          "Progress", "Prioritas"]].copy()
-                summary_df["Order Date"] = summary_df["Order Date"].dt.strftime('%Y-%m-%d')
-                summary_df["Due Date"] = summary_df["Due Date"].dt.strftime('%Y-%m-%d')
+                summary_df_filtered["Order Date"] = summary_df_filtered["Order Date"].dt.strftime('%Y-%m-%d')
+                summary_df_filtered["Due Date"] = summary_df_filtered["Due Date"].dt.strftime('%Y-%m-%d')
                 
-                st.dataframe(summary_df, use_container_width=True, hide_index=True)
+                st.dataframe(summary_df_filtered, use_container_width=True, hide_index=True)
         else:
             st.warning("Tidak ada data sesuai filter")
     else:
