@@ -49,19 +49,19 @@ def inject_responsive_css():
     /* Buyer Stats Card */
     .buyer-stats-card {
         background: #667eea;
-        padding: 1rem;
+        padding: 15px;
         border-radius: 8px;
         color: white;
-        margin: 0.5rem 0;
+        margin: 5px 0;
     }
     
     /* Workstation Card */
     .workstation-card {
         background: #1F2937;
         border-left: 4px solid #3B82F6;
-        padding: 1rem;
+        padding: 15px;
         border-radius: 5px;
-        margin: 0.5rem 0;
+        margin: 5px 0;
     }
     """
 
