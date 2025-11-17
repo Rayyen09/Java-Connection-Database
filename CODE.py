@@ -46,10 +46,9 @@ CONTAINER_TYPES = {
 def inject_responsive_css():
     st.markdown("""
     """
-        /* Buyer Stats Card */
+    /* Buyer Stats Card */
     .buyer-stats-card {
-        background-color: #667eea;
-        background-image: linear-gradient(135deg, #667eea 0, #764ba2 100);
+        background: #667eea;
         padding: 1rem;
         border-radius: 8px;
         color: white;
