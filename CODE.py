@@ -690,14 +690,21 @@ if st.session_state["menu"] == "Dashboard":
         
         if chart_buyers:
             # Filter data berdasarkan buyer dan date range
+            df_chart = df[df["Buyer"].isin(chart_buyers)].copy()
+            
+            # Convert date columns to datetime if not already
+            df_chart['Order Date'] = pd.to_datetime(df_chart['Order Date'])
+            df_chart['Due Date'] = pd.to_datetime(df_chart['Due Date'])
+            
+            # Apply date range filter
             if len(date_range) == 2:
-                df_chart = df[
-                    (df["Buyer"].isin(chart_buyers)) & 
-                    (df['Order Date'] >= pd.Timestamp(date_range[0])) &
-                    (df['Due Date'] <= pd.Timestamp(date_range[1]))
-                ].copy()
-            else:
-                df_chart = df[df["Buyer"].isin(chart_buyers)].copy()
+                start_date = pd.Timestamp(date_range[0])
+                end_date = pd.Timestamp(date_range[1])
+                
+                df_chart = df_chart[
+                    (df_chart['Order Date'] >= start_date) &
+                    (df_chart['Due Date'] <= end_date)
+                ]
             
             if not df_chart.empty:
                 # Prepare data untuk chart
@@ -732,8 +739,9 @@ if st.session_state["menu"] == "Dashboard":
                                     
                                     total_qty += qty_in_stage
                                     total_cbm += qty_in_stage * cbm_per_unit
-                            except:
-                                pass
+                            except Exception as e:
+                                # Skip orders with invalid tracking data
+                                continue
                         
                         buyer_stage_data[buyer][stage] = {
                             "qty": total_qty,
