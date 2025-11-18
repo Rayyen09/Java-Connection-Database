@@ -148,6 +148,24 @@ def inject_responsive_css():
         background: linear-gradient(90deg, #10B981 0%, #3B82F6 100%);
         transition: width 0.3s ease;
     }
+    
+    /* Knockdown piece card styling */
+    .knockdown-piece {
+        background: #1F2937;
+        border: 1px solid #3B82F6;
+        border-radius: 8px;
+        padding: 12px;
+        margin: 8px 0;
+    }
+    
+    .piece-badge {
+        background: #3B82F6;
+        color: white;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 0.85em;
+        font-weight: bold;
+    }
     </style>
     
     <script>
@@ -183,9 +201,13 @@ def load_data():
                     df['Due Date'] = pd.to_datetime(df['Due Date']).dt.date
                     if 'History' not in df.columns:
                         df['History'] = df.apply(lambda x: json.dumps([]), axis=1)
-                    # Add new columns if not exist
                     if 'Product CBM' not in df.columns:
                         df['Product CBM'] = 0.0
+                    # TAMBAHKAN 2 BARIS INI:
+                    if 'Is Knockdown' not in df.columns:
+                        df['Is Knockdown'] = False
+                    if 'Knockdown Pieces' not in df.columns:
+                        df['Knockdown Pieces'] = df.apply(lambda x: json.dumps([]), axis=1)
                 return df
         except Exception as e:
             st.error(f"Error loading data: {e}")
@@ -195,7 +217,8 @@ def load_data():
         "Tracking", "History", "Material", "Finishing", "Description",
         "Product Size P", "Product Size L", "Product Size T", "Product CBM",
         "Packing Size P", "Packing Size L", "Packing Size T",
-        "CBM per Pcs", "Total CBM", "Image Path"
+        "CBM per Pcs", "Total CBM", "Image Path", 
+        "Is Knockdown", "Knockdown Pieces"  # TAMBAHKAN 2 KOLOM INI
     ])
 
 def save_data(df):
@@ -361,32 +384,41 @@ def get_products_by_buyer(buyer_name):
     return sorted(buyer_products)
 
 def calculate_production_metrics(df):
-    """Calculate WIP, Finished Goods, and Shipping metrics"""
     wip_stages = ["Warehouse", "Fitting 1", "Amplas", "Revisi 1", "Spray", "Fitting 2", "Revisi Fitting 2"]
     
     wip_qty = 0
     wip_cbm = 0
-    finished_qty = 0  # Packaging stage = Produk Jadi
+    finished_qty = 0
     finished_cbm = 0
-    shipping_qty = 0  # Pengiriman stage
+    shipping_qty = 0
     shipping_cbm = 0
     
     for idx, row in df.iterrows():
         try:
             tracking_data = json.loads(row["Tracking"])
-            product_cbm = float(row.get("Product CBM", 0))
+            
+            # TAMBAHKAN BAGIAN INI - Handle knockdown products
+            if row.get("Is Knockdown", False):
+                try:
+                    knockdown_pieces = json.loads(row.get("Knockdown Pieces", "[]"))
+                    total_cbm_per_unit = sum([piece.get("cbm", 0) for piece in knockdown_pieces])
+                except:
+                    total_cbm_per_unit = float(row.get("Total CBM", 0)) / max(row.get("Qty", 1), 1)
+            else:
+                total_cbm_per_unit = float(row.get("CBM per Pcs", 0))
+            # AKHIR TAMBAHAN
             
             for stage, data in tracking_data.items():
                 qty = data.get("qty", 0)
                 if stage in wip_stages and qty > 0:
                     wip_qty += qty
-                    wip_cbm += qty * product_cbm
+                    wip_cbm += qty * total_cbm_per_unit  # UBAH dari product_cbm ke total_cbm_per_unit
                 elif stage == "Packaging" and qty > 0:
                     finished_qty += qty
-                    finished_cbm += qty * product_cbm
+                    finished_cbm += qty * total_cbm_per_unit  # UBAH
                 elif stage == "Pengiriman" and qty > 0:
                     shipping_qty += qty
-                    shipping_cbm += qty * product_cbm
+                    shipping_cbm += qty * total_cbm_per_unit  # UBAH
         except:
             pass
     
@@ -413,6 +445,10 @@ if "container_cart" not in st.session_state:
 # Initialize selected container type
 if "selected_container_type" not in st.session_state:
     st.session_state["selected_container_type"] = "40 HC (High Cube)"
+
+# Initialize knockdown pieces for input form
+if "knockdown_pieces" not in st.session_state:
+    st.session_state["knockdown_pieces"] = []
 
 # ===== SIDEBAR MENU =====
 st.sidebar.title("🏭 PPIC-DSS MENU")
@@ -774,6 +810,18 @@ elif st.session_state["menu"] == "Input":
     st.markdown("---")
     st.markdown("#### 📦 Tambah Produk ke Order")
     
+    # Product type selection
+    col_type1, col_type2 = st.columns([1, 3])
+    with col_type1:
+        is_knockdown = st.checkbox("🔧 Produk Knockdown", key="is_knockdown_check", 
+                                   help="Centang jika produk terdiri dari beberapa piece dengan kubikasi berbeda")
+    
+    with col_type2:
+        if is_knockdown:
+            st.info("💡 **Mode Knockdown**: Produk akan terbagi menjadi beberapa pieces dengan packing size berbeda")
+        else:
+            st.info("📦 **Mode Normal**: Satu produk = satu packing size")
+    
     # Create properly aligned columns for form
     with st.container():
         col1, col2, col3 = st.columns([1, 1, 1])
@@ -790,7 +838,9 @@ elif st.session_state["menu"] == "Input":
             else:
                 produk_name = st.text_input("Nama Produk", key="form_produk")
             
-            qty = st.number_input("Quantity (pcs)", min_value=1, value=1, key="form_qty")
+            qty = st.number_input("Quantity (unit)" if not is_knockdown else "Quantity (set)", 
+                                 min_value=1, value=1, key="form_qty",
+                                 help="Jumlah unit produk" if not is_knockdown else "Jumlah set knockdown")
             
             uploaded_image = st.file_uploader("Upload Gambar Produk", 
                                              type=['jpg', 'jpeg', 'png'], 
@@ -810,7 +860,6 @@ elif st.session_state["menu"] == "Input":
             with col_ps3:
                 prod_t = st.number_input("T", min_value=0.0, value=None, format="%.2f", key="prod_t", step=0.01, placeholder="0.00")
             
-            # Product CBM calculation with 6 decimal places
             product_cbm = calculate_cbm(prod_p, prod_l, prod_t)
             if product_cbm > 0:
                 st.success(f"📦 Product CBM: **{product_cbm:.6f} m³**")
@@ -818,56 +867,159 @@ elif st.session_state["menu"] == "Input":
                 st.info(f"📦 Product CBM: 0.000000 m³")
         
         with col3:
-            st.markdown("**Packing Information**")
-            st.markdown("**Packing Size (cm)**")
-            col_pack1, col_pack2, col_pack3 = st.columns(3)
-            with col_pack1:
-                pack_p = st.number_input("P", min_value=0.0, value=None, format="%.2f", key="pack_p", step=0.01, placeholder="0.00")
-            with col_pack2:
-                pack_l = st.number_input("L", min_value=0.0, value=None, format="%.2f", key="pack_l", step=0.01, placeholder="0.00")
-            with col_pack3:
-                pack_t = st.number_input("T", min_value=0.0, value=None, format="%.2f", key="pack_t", step=0.01, placeholder="0.00")
-            
-            # Real-time CBM calculation with 6 decimal places
-            cbm_per_pcs = calculate_cbm(pack_p, pack_l, pack_t)
-            total_cbm = cbm_per_pcs * qty
-            
-            if cbm_per_pcs > 0:
-                st.success(f"📦 CBM per Pcs: **{cbm_per_pcs:.6f} m³**")
-                st.info(f"📦 Total CBM: **{total_cbm:.6f} m³**")
+            if not is_knockdown:
+                # Normal product - single packing
+                st.markdown("**Packing Information**")
+                st.markdown("**Packing Size (cm)**")
+                col_pack1, col_pack2, col_pack3 = st.columns(3)
+                with col_pack1:
+                    pack_p = st.number_input("P", min_value=0.0, value=None, format="%.2f", key="pack_p", step=0.01, placeholder="0.00")
+                with col_pack2:
+                    pack_l = st.number_input("L", min_value=0.0, value=None, format="%.2f", key="pack_l", step=0.01, placeholder="0.00")
+                with col_pack3:
+                    pack_t = st.number_input("T", min_value=0.0, value=None, format="%.2f", key="pack_t", step=0.01, placeholder="0.00")
+                
+                cbm_per_pcs = calculate_cbm(pack_p, pack_l, pack_t)
+                total_cbm = cbm_per_pcs * qty
+                
+                if cbm_per_pcs > 0:
+                    st.success(f"📦 CBM per Unit: **{cbm_per_pcs:.6f} m³**")
+                    st.info(f"📦 Total CBM: **{total_cbm:.6f} m³**")
+                else:
+                    st.info(f"📦 CBM per Unit: 0.000000 m³")
+                    st.info(f"📦 Total CBM: 0.000000 m³")
             else:
-                st.info(f"📦 CBM per Pcs: 0.000000 m³")
-                st.info(f"📦 Total CBM: 0.000000 m³")
-            
-            description = st.text_area("Description", placeholder="Deskripsi produk...", height=50, key="form_desc")
+                # Knockdown product - show piece management
+                st.markdown("**🔧 Knockdown Pieces**")
+                st.caption("Tambahkan pieces di bawah form ini")
+                
+                if st.session_state["knockdown_pieces"]:
+                    total_cbm_per_set = sum([p["cbm"] for p in st.session_state["knockdown_pieces"]])
+                    total_cbm = total_cbm_per_set * qty
+                    st.success(f"📦 CBM per Set: **{total_cbm_per_set:.6f} m³**")
+                    st.info(f"📦 Total CBM ({qty} sets): **{total_cbm:.6f} m³**")
+                    st.caption(f"✓ {len(st.session_state['knockdown_pieces'])} pieces ditambahkan")
+                else:
+                    st.warning("⚠️ Belum ada piece ditambahkan")
+                    total_cbm = 0
+                    cbm_per_pcs = 0
+                
+                pack_p, pack_l, pack_t = 0, 0, 0
+                cbm_per_pcs = total_cbm / qty if qty > 0 else 0
     
+    description = st.text_area("Description", placeholder="Deskripsi produk...", height=50, key="form_desc")
     keterangan = st.text_area("Keterangan Tambahan", placeholder="Catatan khusus...", height=50, key="form_notes")
+    
+    # Knockdown pieces management
+    if is_knockdown:
+        st.markdown("---")
+        st.markdown("### 🔧 Kelola Knockdown Pieces")
+        st.caption("Tambahkan piece-piece yang membentuk 1 set produk knockdown")
+        
+        with st.expander("➕ Tambah Piece Baru", expanded=True):
+            col_kd1, col_kd2, col_kd3, col_kd4 = st.columns([2, 1, 2, 1])
+            
+            with col_kd1:
+                piece_name = st.text_input("Nama Piece", placeholder="Contoh: Body, Door, Shelf", key="piece_name")
+            
+            with col_kd2:
+                piece_qty = st.number_input("Qty per Set", min_value=1, value=1, key="piece_qty",
+                                           help="Berapa piece ini dalam 1 set")
+            
+            with col_kd3:
+                st.caption("**Packing Size (cm)**")
+                col_kd_p1, col_kd_p2, col_kd_p3 = st.columns(3)
+                with col_kd_p1:
+                    piece_p = st.number_input("P", min_value=0.0, value=0.0, format="%.2f", key="piece_p", step=0.01)
+                with col_kd_p2:
+                    piece_l = st.number_input("L", min_value=0.0, value=0.0, format="%.2f", key="piece_l", step=0.01)
+                with col_kd_p3:
+                    piece_t = st.number_input("T", min_value=0.0, value=0.0, format="%.2f", key="piece_t", step=0.01)
+            
+            with col_kd4:
+                piece_cbm = calculate_cbm(piece_p, piece_l, piece_t) * piece_qty
+                st.metric("CBM Piece", f"{piece_cbm:.6f}")
+                
+                if st.button("➕ Add Piece", use_container_width=True, type="primary", key="add_piece_btn"):
+                    if piece_name and piece_cbm > 0:
+                        new_piece = {
+                            "name": piece_name,
+                            "qty_per_set": piece_qty,
+                            "p": piece_p,
+                            "l": piece_l,
+                            "t": piece_t,
+                            "cbm": piece_cbm
+                        }
+                        st.session_state["knockdown_pieces"].append(new_piece)
+                        st.success(f"✅ Piece '{piece_name}' ditambahkan!")
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ Nama dan dimensi piece harus diisi!")
+        
+        if st.session_state["knockdown_pieces"]:
+            st.markdown("#### 📋 Pieces dalam Set")
+            
+            for idx, piece in enumerate(st.session_state["knockdown_pieces"]):
+                st.markdown(f"""
+                <div class="knockdown-piece">
+                    <span class="piece-badge">Piece {idx + 1}</span>
+                    <strong style="margin-left: 10px; color: #60A5FA;">{piece['name']}</strong>
+                    <span style="color: #9CA3AF; margin-left: 10px;">x{piece['qty_per_set']} pcs</span>
+                    <br>
+                    <small style="color: #D1D5DB;">
+                        Size: {piece['p']:.2f} × {piece['l']:.2f} × {piece['t']:.2f} cm | 
+                        CBM: {piece['cbm']:.6f} m³
+                    </small>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                col_piece1, col_piece2 = st.columns([4, 1])
+                with col_piece2:
+                    if st.button("🗑️ Hapus", key=f"remove_piece_{idx}", use_container_width=True):
+                        st.session_state["knockdown_pieces"].pop(idx)
+                        st.rerun()
     
     # Add product button
     if st.button("➕ Tambah Produk ke Order", use_container_width=True, type="primary", key="add_product_btn"):
         if produk_name and qty > 0:
-            temp_product = {
-                "nama": produk_name,
-                "qty": qty,
-                "material": material if material else "-",
-                "finishing": finishing if finishing else "-",
-                "description": description if description else "-",
-                "prod_p": prod_p,
-                "prod_l": prod_l,
-                "prod_t": prod_t,
-                "product_cbm": product_cbm,
-                "pack_p": pack_p,
-                "pack_l": pack_l,
-                "pack_t": pack_t,
-                "cbm_per_pcs": cbm_per_pcs,
-                "total_cbm": total_cbm,
-                "keterangan": keterangan if keterangan else "-",
-                "image": uploaded_image
-            }
-            
-            st.session_state["input_products"].append(temp_product)
-            st.success(f"✅ Produk '{produk_name}' ditambahkan! Total produk: {len(st.session_state['input_products'])}")
-            st.rerun()
+            if is_knockdown and not st.session_state["knockdown_pieces"]:
+                st.warning("⚠️ Produk knockdown harus memiliki minimal 1 piece!")
+            else:
+                if is_knockdown:
+                    total_cbm_per_set = sum([p["cbm"] for p in st.session_state["knockdown_pieces"]])
+                    total_cbm = total_cbm_per_set * qty
+                    cbm_per_pcs = total_cbm_per_set
+                    knockdown_pieces_data = st.session_state["knockdown_pieces"].copy()
+                else:
+                    cbm_per_pcs = calculate_cbm(pack_p, pack_l, pack_t)
+                    total_cbm = cbm_per_pcs * qty
+                    knockdown_pieces_data = []
+                
+                temp_product = {
+                    "nama": produk_name,
+                    "qty": qty,
+                    "material": material if material else "-",
+                    "finishing": finishing if finishing else "-",
+                    "description": description if description else "-",
+                    "prod_p": prod_p,
+                    "prod_l": prod_l,
+                    "prod_t": prod_t,
+                    "product_cbm": product_cbm,
+                    "pack_p": pack_p if not is_knockdown else 0,
+                    "pack_l": pack_l if not is_knockdown else 0,
+                    "pack_t": pack_t if not is_knockdown else 0,
+                    "cbm_per_pcs": cbm_per_pcs,
+                    "total_cbm": total_cbm,
+                    "keterangan": keterangan if keterangan else "-",
+                    "image": uploaded_image,
+                    "is_knockdown": is_knockdown,
+                    "knockdown_pieces": knockdown_pieces_data
+                }
+                
+                st.session_state["input_products"].append(temp_product)
+                st.session_state["knockdown_pieces"] = []
+                st.success(f"✅ Produk '{produk_name}' {'(Knockdown)' if is_knockdown else ''} ditambahkan!")
+                st.rerun()
         else:
             st.warning("⚠️ Harap isi nama produk dan quantity!")
     
@@ -876,7 +1028,8 @@ elif st.session_state["menu"] == "Input":
         st.markdown("### 📋 Daftar Produk dalam Order Ini")
         
         for idx, product in enumerate(st.session_state["input_products"]):
-            with st.expander(f"📦 {idx + 1}. {product['nama']} ({product['qty']} pcs) - CBM: {product['total_cbm']:.6f} m³", expanded=False):
+            knockdown_badge = " 🔧 (Knockdown)" if product.get("is_knockdown", False) else ""
+            with st.expander(f"📦 {idx + 1}. {product['nama']}{knockdown_badge} ({product['qty']} unit) - CBM: {product['total_cbm']:.6f} m³", expanded=False):
                 col_display1, col_display2, col_display3 = st.columns([2, 2, 1])
                 
                 with col_display1:
@@ -886,14 +1039,31 @@ elif st.session_state["menu"] == "Input":
                     st.write(f"**Product CBM:** {product['product_cbm']:.6f} m³")
                 
                 with col_display2:
-                    st.write(f"**Packing Size:** {product['pack_p']:.2f} x {product['pack_l']:.2f} x {product['pack_t']:.2f} cm")
-                    st.write(f"**CBM per Pcs:** {product['cbm_per_pcs']:.6f} m³")
-                    st.write(f"**Total CBM:** {product['total_cbm']:.6f} m³")
+                    if product.get("is_knockdown", False):
+                        st.write(f"**Type:** Knockdown Product")
+                        st.write(f"**Pieces per Set:** {len(product.get('knockdown_pieces', []))}")
+                        st.write(f"**CBM per Set:** {product['cbm_per_pcs']:.6f} m³")
+                        st.write(f"**Total CBM:** {product['total_cbm']:.6f} m³")
+                    else:
+                        st.write(f"**Packing Size:** {product['pack_p']:.2f} x {product['pack_l']:.2f} x {product['pack_t']:.2f} cm")
+                        st.write(f"**CBM per Unit:** {product['cbm_per_pcs']:.6f} m³")
+                        st.write(f"**Total CBM:** {product['total_cbm']:.6f} m³")
                 
                 with col_display3:
                     if st.button("🗑️ Hapus", key=f"remove_product_{idx}", use_container_width=True):
                         st.session_state["input_products"].pop(idx)
                         st.rerun()
+                
+                if product.get("is_knockdown", False) and product.get("knockdown_pieces"):
+                    st.markdown("---")
+                    st.markdown("**🔧 Knockdown Pieces:**")
+                    for piece_idx, piece in enumerate(product["knockdown_pieces"]):
+                        st.markdown(f"""
+                        <div style="background: #1F2937; padding: 8px; margin: 4px 0; border-radius: 4px; border-left: 3px solid #3B82F6;">
+                            <strong>{piece_idx + 1}. {piece['name']}</strong> (x{piece['qty_per_set']}) - 
+                            {piece['p']:.2f} × {piece['l']:.2f} × {piece['t']:.2f} cm = {piece['cbm']:.6f} m³
+                        </div>
+                        """, unsafe_allow_html=True)
         
         total_cbm_all = sum([p['total_cbm'] for p in st.session_state["input_products"]])
         st.info(f"📦 Total CBM untuk semua produk: **{total_cbm_all:.6f} m³**")
@@ -903,6 +1073,7 @@ elif st.session_state["menu"] == "Input":
         with col_submit1:
             if st.button("🗑️ BATAL", use_container_width=True, type="secondary"):
                 st.session_state["input_products"] = []
+                st.session_state["knockdown_pieces"] = []
                 st.rerun()
         
         with col_submit2:
@@ -920,7 +1091,7 @@ elif st.session_state["menu"] == "Input":
                             image_path = save_uploaded_image(product["image"], new_order_id, prod_idx)
                         
                         initial_history = [add_history_entry(f"{new_order_id}-P{prod_idx+1}", "Order Created", 
-                        f"Product: {product['nama']}, Priority: {prioritas}")]
+                        f"Product: {product['nama']}, Priority: {prioritas}, Type: {'Knockdown' if product.get('is_knockdown', False) else 'Normal'}")]
                        
                         tracking_data = init_tracking_data()
                         first_stage = get_tracking_stages()[0]
@@ -951,7 +1122,9 @@ elif st.session_state["menu"] == "Input":
                             "Keterangan": product["keterangan"],
                             "Image Path": image_path if image_path else "",
                             "Tracking": json.dumps(tracking_data),
-                            "History": json.dumps(initial_history)
+                            "History": json.dumps(initial_history),
+                            "Is Knockdown": product.get("is_knockdown", False),
+                            "Knockdown Pieces": json.dumps(product.get("knockdown_pieces", []))
                         }
                         
                         new_orders.append(order_data)
@@ -965,6 +1138,7 @@ elif st.session_state["menu"] == "Input":
                         st.success(f"✅ Order {new_order_id} dengan {len(st.session_state['input_products'])} produk berhasil ditambahkan!")
                         st.balloons()
                         st.session_state["input_products"] = []
+                        st.session_state["knockdown_pieces"] = []
                         st.rerun()
                 else:
                     st.warning("⚠️ Harap pilih buyer dan tambahkan minimal 1 produk!")
@@ -1050,7 +1224,22 @@ elif st.session_state["menu"] == "Orders":
                                 
                                 if row['Keterangan'] and row['Keterangan'] != '-':
                                     st.markdown(f"**💬 Keterangan:** {row['Keterangan']}")
-                                
+
+                                if row.get('Is Knockdown', False):
+                                    try:
+                                        knockdown_pieces = json.loads(row.get('Knockdown Pieces', '[]'))
+                                        if knockdown_pieces:
+                                            st.markdown("---")
+                                            st.markdown("**🔧 Knockdown Pieces:**")
+                                            for piece_idx, piece in enumerate(knockdown_pieces):
+                                                st.markdown(f"""
+                                                <div style="background: #1F2937; padding: 8px; margin: 4px 0; border-radius: 4px; border-left: 3px solid #3B82F6;">
+                                                    <strong>{piece_idx + 1}. {piece['name']}</strong> (x{piece['qty_per_set']}) - 
+                                                    {piece['p']:.2f} × {piece['l']:.2f} × {piece['t']:.2f} cm = {piece['cbm']:.6f} m³
+                                                </div>
+                                                """, unsafe_allow_html=True)
+                                    except:
+                                        pass
                                 st.markdown("---")
                                 btn_col1, btn_col2, btn_col3 = st.columns(3)
                                 with btn_col1:
