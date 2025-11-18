@@ -656,20 +656,34 @@ if st.session_state["menu"] == "Dashboard":
         st.markdown("---")
 
 # ===== SECTION: BUYER PROGRESS TRACKING CHARTS =====
-        st.markdown("### 📊 Progress Tracking per Buyer")
+        st.markdown("### 📊 Progress Tracking per Buyer & Produk")
         
         # Filter untuk chart
-        col_chart_filter1, col_chart_filter2, col_chart_filter3 = st.columns([2, 2, 2])
+        col_chart_filter1, col_chart_filter2, col_chart_filter3, col_chart_filter4 = st.columns([2, 2, 2, 2])
         
         with col_chart_filter1:
             chart_buyers = st.multiselect(
-                "Select Buyers untuk Chart", 
+                "Select Buyers", 
                 sorted(df["Buyer"].unique().tolist()),
                 default=sorted(df["Buyer"].unique().tolist())[:3] if len(df["Buyer"].unique()) >= 3 else sorted(df["Buyer"].unique().tolist()),
                 key="chart_buyer_filter"
             )
         
         with col_chart_filter2:
+            # Product filter - dynamically update based on selected buyers
+            if chart_buyers:
+                available_products = df[df["Buyer"].isin(chart_buyers)]["Produk"].unique().tolist()
+            else:
+                available_products = df["Produk"].unique().tolist()
+            
+            chart_products = st.multiselect(
+                "Select Products",
+                ["-- All Products --"] + sorted(available_products),
+                default=["-- All Products --"],
+                key="chart_product_filter"
+            )
+        
+        with col_chart_filter3:
             # Date range filter
             min_date = df['Order Date'].min()
             max_date = df['Due Date'].max()
@@ -681,16 +695,30 @@ if st.session_state["menu"] == "Dashboard":
                 key="chart_date_range"
             )
         
-        with col_chart_filter3:
+        with col_chart_filter4:
             chart_metric = st.selectbox(
                 "Metric Display",
                 ["CBM Progress", "Qty Progress", "Both"],
                 key="chart_metric_select"
             )
         
+        # Group by option
+        col_group1, col_group2 = st.columns([1, 3])
+        with col_group1:
+            group_by = st.radio(
+                "Group By",
+                ["Buyer", "Product", "Buyer + Product"],
+                horizontal=True,
+                key="chart_group_by"
+            )
+        
         if chart_buyers:
-            # Filter data berdasarkan buyer dan date range
+            # Filter data berdasarkan buyer, product, dan date range
             df_chart = df[df["Buyer"].isin(chart_buyers)].copy()
+            
+            # Apply product filter
+            if "-- All Products --" not in chart_products and chart_products:
+                df_chart = df_chart[df_chart["Produk"].isin(chart_products)]
             
             # Convert date columns to datetime if not already
             df_chart['Order Date'] = pd.to_datetime(df_chart['Order Date'])
@@ -707,46 +735,127 @@ if st.session_state["menu"] == "Dashboard":
                 ]
             
             if not df_chart.empty:
-                # Prepare data untuk chart
+                # Prepare data untuk chart berdasarkan grouping
                 stages = get_tracking_stages()
                 
-                # Data structure: {buyer: {stage: {qty: X, cbm: Y}}}
-                buyer_stage_data = {}
-                
-                for buyer in chart_buyers:
-                    buyer_stage_data[buyer] = {}
-                    buyer_orders = df_chart[df_chart["Buyer"] == buyer]
+                # Data structure depends on grouping
+                if group_by == "Buyer":
+                    # Group by buyer only
+                    group_stage_data = {}
                     
-                    for stage in stages:
-                        total_qty = 0
-                        total_cbm = 0
+                    for buyer in chart_buyers:
+                        group_stage_data[buyer] = {}
+                        buyer_orders = df_chart[df_chart["Buyer"] == buyer]
                         
-                        for idx, order in buyer_orders.iterrows():
-                            try:
-                                tracking_data = json.loads(order["Tracking"])
-                                qty_in_stage = tracking_data.get(stage, {}).get("qty", 0)
-                                
-                                if qty_in_stage > 0:
-                                    # Handle knockdown products
-                                    if order.get("Is Knockdown", False):
-                                        try:
-                                            knockdown_pieces = json.loads(order.get("Knockdown Pieces", "[]"))
-                                            cbm_per_unit = sum([piece.get("cbm", 0) for piece in knockdown_pieces])
-                                        except:
-                                            cbm_per_unit = float(order.get("CBM per Pcs", 0))
-                                    else:
-                                        cbm_per_unit = float(order.get("CBM per Pcs", 0))
+                        for stage in stages:
+                            total_qty = 0
+                            total_cbm = 0
+                            
+                            for idx, order in buyer_orders.iterrows():
+                                try:
+                                    tracking_data = json.loads(order["Tracking"])
+                                    qty_in_stage = tracking_data.get(stage, {}).get("qty", 0)
                                     
-                                    total_qty += qty_in_stage
-                                    total_cbm += qty_in_stage * cbm_per_unit
-                            except Exception as e:
-                                # Skip orders with invalid tracking data
-                                continue
+                                    if qty_in_stage > 0:
+                                        if order.get("Is Knockdown", False):
+                                            try:
+                                                knockdown_pieces = json.loads(order.get("Knockdown Pieces", "[]"))
+                                                cbm_per_unit = sum([piece.get("cbm", 0) for piece in knockdown_pieces])
+                                            except:
+                                                cbm_per_unit = float(order.get("CBM per Pcs", 0))
+                                        else:
+                                            cbm_per_unit = float(order.get("CBM per Pcs", 0))
+                                        
+                                        total_qty += qty_in_stage
+                                        total_cbm += qty_in_stage * cbm_per_unit
+                                except Exception as e:
+                                    continue
+                            
+                            group_stage_data[buyer][stage] = {
+                                "qty": total_qty,
+                                "cbm": total_cbm
+                            }
+                
+                elif group_by == "Product":
+                    # Group by product only
+                    group_stage_data = {}
+                    products_in_chart = df_chart["Produk"].unique()
+                    
+                    for product in products_in_chart:
+                        group_stage_data[product] = {}
+                        product_orders = df_chart[df_chart["Produk"] == product]
                         
-                        buyer_stage_data[buyer][stage] = {
-                            "qty": total_qty,
-                            "cbm": total_cbm
-                        }
+                        for stage in stages:
+                            total_qty = 0
+                            total_cbm = 0
+                            
+                            for idx, order in product_orders.iterrows():
+                                try:
+                                    tracking_data = json.loads(order["Tracking"])
+                                    qty_in_stage = tracking_data.get(stage, {}).get("qty", 0)
+                                    
+                                    if qty_in_stage > 0:
+                                        if order.get("Is Knockdown", False):
+                                            try:
+                                                knockdown_pieces = json.loads(order.get("Knockdown Pieces", "[]"))
+                                                cbm_per_unit = sum([piece.get("cbm", 0) for piece in knockdown_pieces])
+                                            except:
+                                                cbm_per_unit = float(order.get("CBM per Pcs", 0))
+                                        else:
+                                            cbm_per_unit = float(order.get("CBM per Pcs", 0))
+                                        
+                                        total_qty += qty_in_stage
+                                        total_cbm += qty_in_stage * cbm_per_unit
+                                except Exception as e:
+                                    continue
+                            
+                            group_stage_data[product][stage] = {
+                                "qty": total_qty,
+                                "cbm": total_cbm
+                            }
+                
+                else:  # Buyer + Product
+                    # Group by buyer and product combination
+                    group_stage_data = {}
+                    
+                    for buyer in chart_buyers:
+                        buyer_orders = df_chart[df_chart["Buyer"] == buyer]
+                        products_in_buyer = buyer_orders["Produk"].unique()
+                        
+                        for product in products_in_buyer:
+                            group_key = f"{buyer} - {product}"
+                            group_stage_data[group_key] = {}
+                            
+                            combo_orders = buyer_orders[buyer_orders["Produk"] == product]
+                            
+                            for stage in stages:
+                                total_qty = 0
+                                total_cbm = 0
+                                
+                                for idx, order in combo_orders.iterrows():
+                                    try:
+                                        tracking_data = json.loads(order["Tracking"])
+                                        qty_in_stage = tracking_data.get(stage, {}).get("qty", 0)
+                                        
+                                        if qty_in_stage > 0:
+                                            if order.get("Is Knockdown", False):
+                                                try:
+                                                    knockdown_pieces = json.loads(order.get("Knockdown Pieces", "[]"))
+                                                    cbm_per_unit = sum([piece.get("cbm", 0) for piece in knockdown_pieces])
+                                                except:
+                                                    cbm_per_unit = float(order.get("CBM per Pcs", 0))
+                                            else:
+                                                cbm_per_unit = float(order.get("CBM per Pcs", 0))
+                                            
+                                            total_qty += qty_in_stage
+                                            total_cbm += qty_in_stage * cbm_per_unit
+                                    except Exception as e:
+                                        continue
+                                
+                                group_stage_data[group_key][stage] = {
+                                    "qty": total_qty,
+                                    "cbm": total_cbm
+                                }
                 
                 # Create charts based on selected metric
                 if chart_metric == "CBM Progress" or chart_metric == "Both":
@@ -754,12 +863,12 @@ if st.session_state["menu"] == "Dashboard":
                     
                     # Prepare data for stacked bar chart (CBM)
                     chart_data_cbm = []
-                    for buyer in chart_buyers:
+                    for group_key in group_stage_data.keys():
                         for stage in stages:
-                            cbm_val = buyer_stage_data[buyer][stage]["cbm"]
-                            if cbm_val > 0:  # Only show stages with data
+                            cbm_val = group_stage_data[group_key][stage]["cbm"]
+                            if cbm_val > 0:
                                 chart_data_cbm.append({
-                                    "Buyer": buyer,
+                                    "Group": group_key,
                                     "Stage": stage,
                                     "CBM": cbm_val
                                 })
@@ -769,20 +878,21 @@ if st.session_state["menu"] == "Dashboard":
                         
                         fig_cbm = px.bar(
                             df_cbm,
-                            x="Buyer",
+                            x="Group",
                             y="CBM",
                             color="Stage",
-                            title="CBM Distribution by Workstation (m³)",
-                            labels={"CBM": "Volume (m³)", "Stage": "Workstation"},
+                            title=f"CBM Distribution by Workstation - Grouped by {group_by} (m³)",
+                            labels={"CBM": "Volume (m³)", "Stage": "Workstation", "Group": group_by},
                             barmode="stack",
                             height=400
                         )
                         
                         fig_cbm.update_layout(
-                            xaxis_title="Buyer",
+                            xaxis_title=group_by,
                             yaxis_title="Total CBM (m³)",
                             legend_title="Workstation",
-                            hovermode='x unified'
+                            hovermode='x unified',
+                            xaxis_tickangle=-45
                         )
                         
                         st.plotly_chart(fig_cbm, use_container_width=True)
@@ -791,42 +901,45 @@ if st.session_state["menu"] == "Dashboard":
                         col_summary1, col_summary2 = st.columns(2)
                         
                         with col_summary1:
-                            st.markdown("**📊 CBM Summary per Buyer**")
+                            st.markdown(f"**📊 CBM Summary per {group_by}**")
                             cbm_summary = {}
-                            for buyer in chart_buyers:
-                                total_cbm = sum([data["cbm"] for data in buyer_stage_data[buyer].values()])
-                                cbm_summary[buyer] = total_cbm
+                            for group_key in group_stage_data.keys():
+                                total_cbm = sum([data["cbm"] for data in group_stage_data[group_key].values()])
+                                if total_cbm > 0:
+                                    cbm_summary[group_key] = total_cbm
                             
-                            summary_df = pd.DataFrame(list(cbm_summary.items()), columns=["Buyer", "Total CBM"])
-                            summary_df["Total CBM"] = summary_df["Total CBM"].apply(lambda x: f"{x:.6f} m³")
-                            st.dataframe(summary_df, use_container_width=True, hide_index=True)
+                            if cbm_summary:
+                                summary_df = pd.DataFrame(list(cbm_summary.items()), columns=[group_by, "Total CBM"])
+                                summary_df["Total CBM"] = summary_df["Total CBM"].apply(lambda x: f"{x:.6f} m³")
+                                summary_df = summary_df.sort_values("Total CBM", ascending=False)
+                                st.dataframe(summary_df, use_container_width=True, hide_index=True)
                         
                         with col_summary2:
-                            # Percentage distribution
                             st.markdown("**📈 CBM Percentage Distribution**")
                             total_all_cbm = sum(cbm_summary.values())
                             if total_all_cbm > 0:
                                 pct_data = []
-                                for buyer, cbm in cbm_summary.items():
+                                for group_key, cbm in cbm_summary.items():
                                     pct = (cbm / total_all_cbm) * 100
-                                    pct_data.append({"Buyer": buyer, "Percentage": f"{pct:.2f}%"})
+                                    pct_data.append({group_by: group_key, "Percentage": f"{pct:.2f}%", "Sort": pct})
                                 
                                 pct_df = pd.DataFrame(pct_data)
+                                pct_df = pct_df.sort_values("Sort", ascending=False).drop("Sort", axis=1)
                                 st.dataframe(pct_df, use_container_width=True, hide_index=True)
                     else:
-                        st.info("No CBM data available for selected buyers and date range")
+                        st.info("No CBM data available for selected filters")
                 
                 if chart_metric == "Qty Progress" or chart_metric == "Both":
                     st.markdown("#### 📦 Quantity Distribution per Workstation")
                     
                     # Prepare data for stacked bar chart (Qty)
                     chart_data_qty = []
-                    for buyer in chart_buyers:
+                    for group_key in group_stage_data.keys():
                         for stage in stages:
-                            qty_val = buyer_stage_data[buyer][stage]["qty"]
-                            if qty_val > 0:  # Only show stages with data
+                            qty_val = group_stage_data[group_key][stage]["qty"]
+                            if qty_val > 0:
                                 chart_data_qty.append({
-                                    "Buyer": buyer,
+                                    "Group": group_key,
                                     "Stage": stage,
                                     "Qty": qty_val
                                 })
@@ -836,20 +949,21 @@ if st.session_state["menu"] == "Dashboard":
                         
                         fig_qty = px.bar(
                             df_qty,
-                            x="Buyer",
+                            x="Group",
                             y="Qty",
                             color="Stage",
-                            title="Quantity Distribution by Workstation (pcs)",
-                            labels={"Qty": "Quantity (pcs)", "Stage": "Workstation"},
+                            title=f"Quantity Distribution by Workstation - Grouped by {group_by} (pcs)",
+                            labels={"Qty": "Quantity (pcs)", "Stage": "Workstation", "Group": group_by},
                             barmode="stack",
                             height=400
                         )
                         
                         fig_qty.update_layout(
-                            xaxis_title="Buyer",
+                            xaxis_title=group_by,
                             yaxis_title="Total Quantity (pcs)",
                             legend_title="Workstation",
-                            hovermode='x unified'
+                            hovermode='x unified',
+                            xaxis_tickangle=-45
                         )
                         
                         st.plotly_chart(fig_qty, use_container_width=True)
@@ -858,30 +972,33 @@ if st.session_state["menu"] == "Dashboard":
                         col_qty_sum1, col_qty_sum2 = st.columns(2)
                         
                         with col_qty_sum1:
-                            st.markdown("**📊 Quantity Summary per Buyer**")
+                            st.markdown(f"**📊 Quantity Summary per {group_by}**")
                             qty_summary = {}
-                            for buyer in chart_buyers:
-                                total_qty = sum([data["qty"] for data in buyer_stage_data[buyer].values()])
-                                qty_summary[buyer] = total_qty
+                            for group_key in group_stage_data.keys():
+                                total_qty = sum([data["qty"] for data in group_stage_data[group_key].values()])
+                                if total_qty > 0:
+                                    qty_summary[group_key] = total_qty
                             
-                            qty_summary_df = pd.DataFrame(list(qty_summary.items()), columns=["Buyer", "Total Qty"])
-                            qty_summary_df["Total Qty"] = qty_summary_df["Total Qty"].apply(lambda x: f"{x:,} pcs")
-                            st.dataframe(qty_summary_df, use_container_width=True, hide_index=True)
+                            if qty_summary:
+                                qty_summary_df = pd.DataFrame(list(qty_summary.items()), columns=[group_by, "Total Qty"])
+                                qty_summary_df["Total Qty"] = qty_summary_df["Total Qty"].apply(lambda x: f"{x:,} pcs")
+                                qty_summary_df = qty_summary_df.sort_values("Total Qty", ascending=False)
+                                st.dataframe(qty_summary_df, use_container_width=True, hide_index=True)
                         
                         with col_qty_sum2:
-                            # Percentage distribution
                             st.markdown("**📈 Qty Percentage Distribution**")
                             total_all_qty = sum(qty_summary.values())
                             if total_all_qty > 0:
                                 pct_qty_data = []
-                                for buyer, qty in qty_summary.items():
+                                for group_key, qty in qty_summary.items():
                                     pct = (qty / total_all_qty) * 100
-                                    pct_qty_data.append({"Buyer": buyer, "Percentage": f"{pct:.2f}%"})
+                                    pct_qty_data.append({group_by: group_key, "Percentage": f"{pct:.2f}%", "Sort": pct})
                                 
                                 pct_qty_df = pd.DataFrame(pct_qty_data)
+                                pct_qty_df = pct_qty_df.sort_values("Sort", ascending=False).drop("Sort", axis=1)
                                 st.dataframe(pct_qty_df, use_container_width=True, hide_index=True)
                     else:
-                        st.info("No quantity data available for selected buyers and date range")
+                        st.info("No quantity data available for selected filters")
                 
                 # Detailed breakdown by stage
                 st.markdown("---")
@@ -889,21 +1006,21 @@ if st.session_state["menu"] == "Dashboard":
                 
                 # Create detailed table
                 detailed_data = []
-                for buyer in chart_buyers:
+                for group_key in group_stage_data.keys():
                     for stage in stages:
-                        qty = buyer_stage_data[buyer][stage]["qty"]
-                        cbm = buyer_stage_data[buyer][stage]["cbm"]
+                        qty = group_stage_data[group_key][stage]["qty"]
+                        cbm = group_stage_data[group_key][stage]["cbm"]
                         
                         if qty > 0 or cbm > 0:
                             # Calculate percentage
-                            buyer_total_cbm = sum([data["cbm"] for data in buyer_stage_data[buyer].values()])
-                            buyer_total_qty = sum([data["qty"] for data in buyer_stage_data[buyer].values()])
+                            group_total_cbm = sum([data["cbm"] for data in group_stage_data[group_key].values()])
+                            group_total_qty = sum([data["qty"] for data in group_stage_data[group_key].values()])
                             
-                            cbm_pct = (cbm / buyer_total_cbm * 100) if buyer_total_cbm > 0 else 0
-                            qty_pct = (qty / buyer_total_qty * 100) if buyer_total_qty > 0 else 0
+                            cbm_pct = (cbm / group_total_cbm * 100) if group_total_cbm > 0 else 0
+                            qty_pct = (qty / group_total_qty * 100) if group_total_qty > 0 else 0
                             
                             detailed_data.append({
-                                "Buyer": buyer,
+                                group_by: group_key,
                                 "Workstation": stage,
                                 "Qty (pcs)": f"{qty:,}",
                                 "Qty %": f"{qty_pct:.1f}%",
@@ -914,15 +1031,25 @@ if st.session_state["menu"] == "Dashboard":
                 if detailed_data:
                     detailed_df = pd.DataFrame(detailed_data)
                     st.dataframe(detailed_df, use_container_width=True, hide_index=True)
+                    
+                    # Export option
+                    csv_export = detailed_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📥 Download Detailed Report (CSV)",
+                        data=csv_export,
+                        file_name=f"workstation_breakdown_{datetime.date.today()}.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
                 else:
                     st.info("No detailed data available")
             else:
-                st.warning("No orders found for selected buyers and date range")
+                st.warning("No orders found for selected filters")
         else:
             st.info("Please select at least one buyer to display charts")
         
         st.markdown("---")
-
+        
 # ===== SECTION 2: PRODUCTION CALENDAR =====
         col_cal, col_chart = st.columns([2, 1])
         
