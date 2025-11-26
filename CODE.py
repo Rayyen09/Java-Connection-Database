@@ -37,7 +37,7 @@ def load_users():
         except:
             pass
     
-    # Default users jika file tidak ada
+    # Default users
     default_users = {
         "owner": {
             "password": hash_password("owner123"),
@@ -81,26 +81,26 @@ def authenticate(username, password):
     return False, None, None
 
 def check_permission(required_role):
-    """Check if current user has permission to access a menu"""
+    """Check if current user has permission"""
     if "user_role" not in st.session_state:
         return False
     
     user_role = st.session_state["user_role"]
     
-    # Owner hanya bisa akses Dashboard
+    # Owner: Hanya Dashboard
     if user_role == "owner":
-        return required_role in ["Dashboard","Tracking","Analytics","Gantt"]
+        return required_role in ["Dashboard"]
     
-    # Mandor hanya bisa akses Progress
+    # Mandor: Hanya Progress
     elif user_role == "mandor":
-        return required_role in ["Progress","Tracking"]
+        return required_role in ["Progress"]
     
-    # Procurement bisa akses Database, Input, dan Procurement
-    elif user_role == "admin":
+    # Procurement: Database, Input, Procurement
+    elif user_role == "procurement":
         return required_role in ["Database", "Input", "Procurement"]
     
-    # Admin bisa akses semua
-    elif user_role == "procurement":
+    # Admin: Semua menu
+    elif user_role == "admin":
         return True
     
     return False
@@ -119,6 +119,11 @@ def get_role_display_name(role):
 def show_login_page():
     st.markdown("""
     <style>
+    /* Remove all container backgrounds */
+    .main {
+        background-color: transparent;
+    }
+    
     .login-container {
         max-width: 500px;
         margin: 100px auto;
@@ -143,28 +148,49 @@ def show_login_page():
         margin-bottom: 30px;
     }
     
-    .stTextInput input {
-        background-color: rgba(255, 255, 255, 0.9);
-        border-radius: 8px;
-        padding: 12px;
-        font-size: 1rem;
+    /* Style input fields to match theme - NO WHITE BACKGROUND */
+    .stTextInput > div > div > input {
+        background-color: rgba(255, 255, 255, 0.1) !important;
+        border: 1px solid rgba(255, 255, 255, 0.3) !important;
+        border-radius: 8px !important;
+        padding: 12px !important;
+        font-size: 1rem !important;
+        color: white !important;
+    }
+    
+    .stTextInput > div > div > input::placeholder {
+        color: rgba(255, 255, 255, 0.6) !important;
+    }
+    
+    .stTextInput > div > div > input:focus {
+        border-color: rgba(255, 255, 255, 0.8) !important;
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1) !important;
+    }
+    
+    /* Hide labels in login form */
+    .login-container label {
+        color: white !important;
+        font-weight: 500 !important;
+        margin-bottom: 5px !important;
     }
     
     .stButton button {
-        background: white;
-        color: #667eea;
-        font-weight: bold;
-        font-size: 1.1rem;
-        padding: 12px;
-        border-radius: 8px;
-        border: none;
-        width: 100%;
-        margin-top: 10px;
+        background: white !important;
+        color: #667eea !important;
+        font-weight: bold !important;
+        font-size: 1.1rem !important;
+        padding: 12px !important;
+        border-radius: 8px !important;
+        border: none !important;
+        width: 100% !important;
+        margin-top: 10px !important;
     }
     
     .stButton button:hover {
-        background: #F3F4F6;
-        color: #5568D3;
+        background: #F3F4F6 !important;
+        color: #5568D3 !important;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
     }
     
     .default-credentials {
@@ -191,8 +217,8 @@ def show_login_page():
         st.markdown('<p class="login-subtitle">Production Planning & Inventory Control</p>', unsafe_allow_html=True)
         
         with st.form("login_form"):
-            username = st.text_input("👤 Username", placeholder="Masukkan username")
-            password = st.text_input("🔒 Password", type="password", placeholder="Masukkan password")
+            username = st.text_input("👤 Username", placeholder="Masukkan username", key="login_username")
+            password = st.text_input("🔒 Password", type="password", placeholder="Masukkan password", key="login_password")
             
             submit = st.form_submit_button("🚀 LOGIN", use_container_width=True)
             
@@ -213,22 +239,20 @@ def show_login_page():
                 else:
                     st.warning("⚠️ Harap isi username dan password!")
         
-        # Default credentials info
         st.markdown("""
         <div class="default-credentials">
             <h4>🔑 Default Login Credentials:</h4>
-            <strong>Owner:</strong> owner / owner123<br>
-            <strong>Mandor:</strong> mandor / mandor123<br>
-            <strong>Procurement:</strong> procurement / procurement123<br>
-            <strong>Admin:</strong> admin / admin123
+            <strong>Owner:</strong> owner / owner123 (Dashboard only)<br>
+            <strong>Mandor:</strong> mandor / mandor123 (Progress only)<br>
+            <strong>Procurement:</strong> procurement / procurement123 (Database, Input, Procurement)<br>
+            <strong>Admin:</strong> admin / admin123 (Full Access)
         </div>
         """, unsafe_allow_html=True)
         
         st.markdown('</div>', unsafe_allow_html=True)
 
-# ===== LOGOUT FUNCTION =====
 def logout():
-    """Logout user dan clear session"""
+    """Logout user"""
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     st.rerun()
@@ -256,40 +280,33 @@ CONTAINER_TYPES = {
 def inject_responsive_css():
     st.markdown("""
     <style>
-    /* Reduce top padding and margins */
     .block-container {
         padding-top: 3rem !important;
         padding-bottom: 1rem !important;
     }
     
-    /* Compact header spacing */
     h1, h2, h3 {
         margin-top: 0.5rem !important;
         margin-bottom: 0.5rem !important;
     }
     
-    /* Reduce back button spacing */
     [data-testid="stButton"] {
         margin-top: 0 !important;
         margin-bottom: 0.5rem !important;
     }
     
-    /* Form input alignment */
     .stNumberInput, .stTextInput, .stSelectbox, .stDateInput {
         margin-bottom: 0.3rem !important;
     }
     
-    /* Align form elements */
     div[data-testid="column"] {
         padding: 0 0.5rem !important;
     }
     
-    /* Enable Tab navigation between inputs */
     input, select, textarea {
         tab-index: auto !important;
     }
     
-    /* Mobile responsive */
     @media (max-width: 767px) {
         [data-testid="stSidebar"] {
             position: fixed;
@@ -304,7 +321,6 @@ def inject_responsive_css():
         .stButton button { width: 100% !important; }
     }
     
-    /* Scrollable table container */
     .recent-orders-container {
         max-height: 400px;
         overflow-y: auto;
@@ -313,7 +329,6 @@ def inject_responsive_css():
         padding: 10px;
     }
     
-    /* WIP Cards styling */
     .wip-card {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         padding: 1.5rem;
@@ -338,7 +353,6 @@ def inject_responsive_css():
         text-align: center;
     }
     
-    /* Container load visualization */
     .container-visual {
         background: #1F2937;
         border: 2px solid #3B82F6;
@@ -361,7 +375,6 @@ def inject_responsive_css():
         transition: width 0.3s ease;
     }
     
-    /* Knockdown piece card styling */
     .knockdown-piece {
         background: #1F2937;
         border: 1px solid #3B82F6;
@@ -379,7 +392,6 @@ def inject_responsive_css():
         font-weight: bold;
     }
     
-    /* User info badge */
     .user-info-badge {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
@@ -389,10 +401,23 @@ def inject_responsive_css():
         display: inline-block;
         margin: 5px 0;
     }
+    
+    .order-card {
+        background: #1F2937;
+        border: 1px solid #374151;
+        border-radius: 8px;
+        padding: 12px;
+        margin: 8px 0;
+        transition: all 0.2s ease;
+    }
+    
+    .order-card:hover {
+        border-color: #3B82F6;
+        box-shadow: 0 4px 6px rgba(59, 130, 246, 0.2);
+    }
     </style>
     
     <script>
-    // Enable Tab navigation between form fields
     document.addEventListener('DOMContentLoaded', function() {
         const inputs = document.querySelectorAll('input, select, textarea');
         inputs.forEach((input, index) => {
@@ -411,7 +436,6 @@ def inject_responsive_css():
     """, unsafe_allow_html=True)
 
 inject_responsive_css()
-
 # ===== FUNGSI DATABASE (sama seperti sebelumnya) =====
 def load_data():
     if os.path.exists(DATABASE_PATH):
