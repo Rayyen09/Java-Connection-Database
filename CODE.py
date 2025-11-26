@@ -12,9 +12,15 @@ import hashlib
 DATABASE_PATH = "ppic_data.json"
 BUYER_DB_PATH = "buyers.json"
 PRODUCT_DB_PATH = "products.json"
+SUPPLIER_DB_PATH = "suppliers.json"  # NEW
 PROCUREMENT_DB_PATH = "procurement.json"
 CONTAINER_DB_PATH = "containers.json"
 USERS_DB_PATH = "users.json"
+WORKERS_DB_PATH = "workers.json"  # NEW
+ATTENDANCE_DB_PATH = "attendance.json"  # NEW
+
+TOTAL_STORAGE_AREA_M2 = 318.0  # Total storage area in square meters
+
 
 st.set_page_config(
     page_title="PPIC-DSS System", 
@@ -212,9 +218,8 @@ def show_login_page():
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
-        st.markdown('<div class="login-container">', unsafe_allow_html=True)
-        st.markdown('<h1 class="login-title">🏭 PPIC-DSS</h1>', unsafe_allow_html=True)
-        st.markdown('<p class="login-subtitle">Production Planning & Inventory Control</p>', unsafe_allow_html=True)
+        st.markdown('<h1 class="login-title">🏭 PPIC-DSS PT JAVA CONNECTION</h1>', unsafe_allow_html=True)
+        st.markdown('<p class="login-subtitle">Sistem Pencatatan dan Perencanaan Terintegrasi</p>', unsafe_allow_html=True)
         
         with st.form("login_form"):
             username = st.text_input("👤 Username", placeholder="Masukkan username", key="login_username")
@@ -436,7 +441,7 @@ def inject_responsive_css():
     """, unsafe_allow_html=True)
 
 inject_responsive_css()
-# ===== FUNGSI DATABASE (sama seperti sebelumnya) =====
+# ===== FUNGSI DATABASE - ENHANCED PRODUCTS =====
 def load_data():
     if os.path.exists(DATABASE_PATH):
         try:
@@ -504,21 +509,113 @@ def get_buyer_names():
     return [b["name"] for b in buyers]
 
 def load_products():
+    """Load enhanced product database with full specifications"""
     if os.path.exists(PRODUCT_DB_PATH):
         try:
             with open(PRODUCT_DB_PATH, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                data = json.load(f)
+                # Convert old format to new format if needed
+                if data and isinstance(data[0], str):
+                    return []  # Return empty for fresh start
+                
+                # Migration: convert old string format to new numeric format
+                migrated_data = []
+                for product in data:
+                    # Check if already in new format
+                    if "product_size_p" in product:
+                        migrated_data.append(product)
+                    else:
+                        # Convert old format
+                        migrated_product = {
+                            "name": product.get("name", ""),
+                            "material": product.get("material", ""),
+                            "finishing": product.get("finishing", ""),
+                            "description": product.get("description", ""),
+                            "is_knockdown": product.get("is_knockdown", False),
+                            "knockdown_pieces": product.get("knockdown_pieces", []),
+                            "image_path": product.get("image_path", "")
+                        }
+                        
+                        # Parse product size
+                        prod_size = product.get("product_size", "")
+                        if prod_size:
+                            try:
+                                sizes = [float(x.strip()) for x in prod_size.replace("cm", "").split("x")]
+                                migrated_product["product_size_p"] = sizes[0] if len(sizes) > 0 else 0.0
+                                migrated_product["product_size_l"] = sizes[1] if len(sizes) > 1 else 0.0
+                                migrated_product["product_size_t"] = sizes[2] if len(sizes) > 2 else 0.0
+                            except:
+                                migrated_product["product_size_p"] = 0.0
+                                migrated_product["product_size_l"] = 0.0
+                                migrated_product["product_size_t"] = 0.0
+                        else:
+                            migrated_product["product_size_p"] = 0.0
+                            migrated_product["product_size_l"] = 0.0
+                            migrated_product["product_size_t"] = 0.0
+                        
+                        # Parse packing size
+                        pack_size = product.get("packing_size", "")
+                        if pack_size:
+                            try:
+                                sizes = [float(x.strip()) for x in pack_size.replace("cm", "").split("x")]
+                                migrated_product["packing_size_p"] = sizes[0] if len(sizes) > 0 else 0.0
+                                migrated_product["packing_size_l"] = sizes[1] if len(sizes) > 1 else 0.0
+                                migrated_product["packing_size_t"] = sizes[2] if len(sizes) > 2 else 0.0
+                            except:
+                                migrated_product["packing_size_p"] = 0.0
+                                migrated_product["packing_size_l"] = 0.0
+                                migrated_product["packing_size_t"] = 0.0
+                        else:
+                            migrated_product["packing_size_p"] = 0.0
+                            migrated_product["packing_size_l"] = 0.0
+                            migrated_product["packing_size_t"] = 0.0
+                        
+                        migrated_data.append(migrated_product)
+                
+                # Save migrated data
+                if migrated_data != data:
+                    save_products(migrated_data)
+                
+                return migrated_data
         except:
             pass
     return []
 
 def save_products(products):
+    """Save enhanced product database"""
     try:
         with open(PRODUCT_DB_PATH, 'w', encoding='utf-8') as f:
             json.dump(products, f, ensure_ascii=False, indent=2)
         return True
     except:
         return False
+
+def save_product_image(uploaded_file, product_name):
+    """Save uploaded product image to database"""
+    if uploaded_file is not None:
+        images_dir = "product_images"
+        if not os.path.exists(images_dir):
+            os.makedirs(images_dir)
+        
+        # Clean product name for filename
+        clean_name = "".join(c if c.isalnum() else "_" for c in product_name.lower())
+        file_extension = uploaded_file.name.split('.')[-1]
+        filename = f"product_{clean_name}.{file_extension}"
+        filepath = os.path.join(images_dir, filename)
+        
+        with open(filepath, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        
+        return filepath
+    return None
+
+def get_product_by_name(product_name):
+    """Get product details by name"""
+    products = st.session_state["products"]
+    for product in products:
+        if product.get("name") == product_name:
+            return product
+    return None
 
 def load_procurement():
     if os.path.exists(PROCUREMENT_DB_PATH):
@@ -557,12 +654,59 @@ def save_containers(containers_data):
     except:
         return False
 
+# ===== WORKERS DATABASE FUNCTIONS - NEW =====
+def load_workers():
+    if os.path.exists(WORKERS_DB_PATH):
+        try:
+            with open(WORKERS_DB_PATH, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    return []
+
+def save_workers(workers):
+    try:
+        with open(WORKERS_DB_PATH, 'w', encoding='utf-8') as f:
+            json.dump(workers, f, ensure_ascii=False, indent=2)
+        return True
+    except:
+        return False
+
+# ===== ATTENDANCE DATABASE FUNCTIONS - NEW =====
+def load_attendance():
+    if os.path.exists(ATTENDANCE_DB_PATH):
+        try:
+            with open(ATTENDANCE_DB_PATH, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    return []
+
+def save_attendance(attendance_data):
+    try:
+        with open(ATTENDANCE_DB_PATH, 'w', encoding='utf-8') as f:
+            json.dump(attendance_data, f, ensure_ascii=False, indent=2)
+        return True
+    except:
+        return False
+
+def get_attendance_by_date(date_str):
+    attendance = st.session_state.get("attendance", [])
+    for record in attendance:
+        if record.get("date") == date_str:
+            return record
+    return None
+
 def get_tracking_stages():
     return [
         "Pre Order", "Order di Supplier", "Warehouse", "Fitting 1",
         "Amplas", "Revisi 1", "Spray", "Fitting 2",
         "Revisi Fitting 2", "Packaging", "Pengiriman"
     ]
+
+def get_storage_stages():
+    """Stages where items are physically in storage"""
+    return ["Warehouse", "Fitting 1", "Amplas", "Revisi 1", "Spray", "Fitting 2", "Revisi Fitting 2", "Packaging"]
 
 def init_tracking_data():
     stages = get_tracking_stages()
@@ -617,6 +761,38 @@ def calculate_cbm(p, l, t):
     except:
         return 0
 
+def calculate_floor_area_m2(p_cm, l_cm):
+    """Calculate floor area in m² from P and L in cm"""
+    try:
+        p_val = float(p_cm) if p_cm else 0
+        l_val = float(l_cm) if l_cm else 0
+        if p_val > 0 and l_val > 0:
+            return (p_val * l_val) / 10000  # cm² to m²
+        return 0
+    except:
+        return 0
+
+def calculate_storage_usage(df):
+    """Calculate total storage floor area used (only items in storage stages)"""
+    storage_stages = get_storage_stages()
+    total_area_used = 0
+    
+    for idx, row in df.iterrows():
+        try:
+            tracking_data = json.loads(row["Tracking"])
+            prod_p = float(row.get("Product Size P", 0))
+            prod_l = float(row.get("Product Size L", 0))
+            area_per_unit = calculate_floor_area_m2(prod_p, prod_l)
+            
+            for stage in storage_stages:
+                qty_in_stage = tracking_data.get(stage, {}).get("qty", 0)
+                if qty_in_stage > 0:
+                    total_area_used += qty_in_stage * area_per_unit
+        except:
+            pass
+    
+    return total_area_used
+
 def get_products_by_buyer(buyer_name):
     """Get unique products for a specific buyer from orders"""
     df = st.session_state["data_produksi"]
@@ -665,26 +841,51 @@ def calculate_production_metrics(df):
     
     return wip_qty, wip_cbm, finished_qty, finished_cbm, shipping_qty, shipping_cbm
 
-# ===== CHECK LOGIN STATUS =====
+# ===== FUNGSI DATABASE - SUPPLIERS =====
+def load_suppliers():
+    """Load supplier database"""
+    if os.path.exists(SUPPLIER_DB_PATH):
+        try:
+            with open(SUPPLIER_DB_PATH, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    return []
+
+def save_suppliers(suppliers):
+    """Save supplier database"""
+    try:
+        with open(SUPPLIER_DB_PATH, 'w', encoding='utf-8') as f:
+            json.dump(suppliers, f, ensure_ascii=False, indent=2)
+        return True
+    except:
+        return False
+
+
+# ===== INITIALIZATION =====
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
 
-# Jika belum login, tampilkan halaman login
 if not st.session_state["logged_in"]:
     show_login_page()
     st.stop()
 
-# ===== INISIALISASI SETELAH LOGIN =====
 if "data_produksi" not in st.session_state:
     st.session_state["data_produksi"] = load_data()
 if "buyers" not in st.session_state:
     st.session_state["buyers"] = load_buyers()
 if "products" not in st.session_state:
     st.session_state["products"] = load_products()
+if "suppliers" not in st.session_state:
+    st.session_state["suppliers"] = load_suppliers()
 if "procurement" not in st.session_state:
     st.session_state["procurement"] = load_procurement()
 if "containers" not in st.session_state:
     st.session_state["containers"] = load_containers()
+if "workers" not in st.session_state:
+    st.session_state["workers"] = load_workers()
+if "attendance" not in st.session_state:
+    st.session_state["attendance"] = load_attendance()
 if "menu" not in st.session_state:
     st.session_state["menu"] = "Dashboard"
 if "container_cart" not in st.session_state:
@@ -694,10 +895,9 @@ if "selected_container_type" not in st.session_state:
 if "knockdown_pieces" not in st.session_state:
     st.session_state["knockdown_pieces"] = []
 
-# ===== SIDEBAR MENU WITH PERMISSION CHECKS =====
+# ===== SIDEBAR MENU =====
 st.sidebar.title("🏭 PPIC-DSS MENU")
 
-# Display user info
 user_name = st.session_state.get("user_name", "User")
 user_role = st.session_state.get("user_role", "")
 role_display = get_role_display_name(user_role)
@@ -711,7 +911,6 @@ st.sidebar.markdown(f"""
 
 st.sidebar.markdown("---")
 
-# Menu options dengan permission check
 menu_options = {
     "📊 Dashboard": "Dashboard",
     "📋 Input Pesanan Baru": "Input",
@@ -723,6 +922,7 @@ menu_options = {
     "💾 Database": "Database",
     "📈 Analisis & Laporan": "Analytics",
     "📊 Gantt Chart": "Gantt",
+    "📝 Absensi": "Absensi",  # NEW
     "❄️ Frozen Zone": "Frozen"
 }
 
@@ -733,20 +933,19 @@ for label, value in menu_options.items():
 
 st.sidebar.markdown("---")
 
-# Logout button
 if st.sidebar.button("🚪 Logout", use_container_width=True, type="secondary"):
     logout()
 
 st.sidebar.info(f"📁 Database: Local Storage")
 
-# ===== BACK BUTTON =====
+# Back button
 if st.session_state["menu"] != "Dashboard":
     if st.button("⬅️ Back to Dashboard", type="secondary"):
         st.session_state["menu"] = "Dashboard"
         st.rerun()
     st.markdown("---")
 
-# ===== PERMISSION CHECK FOR CURRENT MENU =====
+# Permission check
 current_menu = st.session_state.get("menu", "Dashboard")
 if not check_permission(current_menu):
     st.error("🚫 Anda tidak memiliki akses ke menu ini!")
@@ -760,139 +959,83 @@ if st.session_state["menu"] == "Dashboard":
     df = st.session_state["data_produksi"]
     
     if not df.empty:
-        # Calculate tracking status
-        df['Tracking Status'] = df.apply(
-            lambda row: get_tracking_status_from_progress(row['Progress']), 
-            axis=1
-        )
+        df['Tracking Status'] = df.apply(lambda row: get_tracking_status_from_progress(row['Progress']), axis=1)
         
-        # Calculate production metrics
+        # Calculate metrics
         wip_qty, wip_cbm, finished_qty, finished_cbm, shipping_qty, shipping_cbm = calculate_production_metrics(df)
         
-        # ===== SECTION 1: TOP ROW - RECENT ORDERS + KEY METRICS =====
-        col_left, col_right = st.columns([3, 2])
+        # Calculate storage usage
+        storage_used_m2 = calculate_storage_usage(df)
+        storage_percentage = (storage_used_m2 / TOTAL_STORAGE_AREA_M2) * 100
+        storage_available = TOTAL_STORAGE_AREA_M2 - storage_used_m2
         
-        with col_left:
-            st.markdown("### 🕒 Recent Orders")
-            
-            # Buyer filter for recent orders
-            col_filter1, col_filter2 = st.columns([2, 1])
-            with col_filter1:
-                buyers_list = ["-- All Buyers --"] + sorted(df["Buyer"].unique().tolist())
-                selected_buyer_filter = st.selectbox("Filter by Buyer", buyers_list, key="recent_buyer_filter")
-            
-            with col_filter2:
-                search_recent = st.text_input("🔍 Search", key="search_recent_orders", placeholder="Order ID/Product")
-            
-            # Apply buyer filter
-            if selected_buyer_filter and selected_buyer_filter != "-- All Buyers --":
-                recent_df = df[df["Buyer"] == selected_buyer_filter].sort_values("Order Date", ascending=False)
+        # ===== TOP METRICS ROW =====
+        st.markdown("### 📈 Key Metrics")
+        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+        
+        total_orders = len(df)
+        ongoing = len(df[df["Tracking Status"] == "On Going"])
+        done = len(df[df["Tracking Status"] == "Done"])
+        total_qty = df["Qty"].sum()
+        
+        col_m1.metric("📦 Total Orders", total_orders)
+        col_m2.metric("🔄 On Going", ongoing)
+        col_m3.metric("✅ Done", done)
+        col_m4.metric("📊 Total Qty", f"{total_qty:,}")
+        
+        st.markdown("---")
+        
+        # ===== STORAGE USAGE SECTION - NEW =====
+        st.markdown("### 🏭 Storage Usage")
+        
+        col_storage1, col_storage2 = st.columns([2, 1])
+        
+        with col_storage1:
+            # Storage progress bar
+            if storage_percentage > 90:
+                bar_color = "#EF4444"  # Red
+                status_text = "⚠️ CRITICAL"
+            elif storage_percentage > 70:
+                bar_color = "#F59E0B"  # Yellow
+                status_text = "⚡ HIGH"
             else:
-                recent_df = df.sort_values("Order Date", ascending=False)
+                bar_color = "#10B981"  # Green
+                status_text = "✅ NORMAL"
             
-            # Apply search filter
-            if search_recent:
-                recent_df = recent_df[
-                    recent_df["Order ID"].str.contains(search_recent, case=False, na=False) | 
-                    recent_df["Buyer"].str.contains(search_recent, case=False, na=False) |
-                    recent_df["Produk"].str.contains(search_recent, case=False, na=False)
-                ]
-            
-            # Show filtered count
-            if selected_buyer_filter != "-- All Buyers --" or search_recent:
-                st.caption(f"📊 Showing {len(recent_df)} orders")
-            
-            # Scrollable container for recent orders with cubication info
-            with st.container():
-                st.markdown('<div class="recent-orders-container">', unsafe_allow_html=True)
-                
-                for idx, row in recent_df.head(20).iterrows():
-                    # Get tracking data for workstation distribution
-                    try:
-                        tracking_data = json.loads(row["Tracking"])
-                        product_cbm = float(row.get("Product CBM", 0))
-                        
-                        # Find active workstations (where qty > 0)
-                        active_stations = []
-                        total_tracked_cbm = 0
-                        for stage, data in tracking_data.items():
-                            qty = data.get("qty", 0)
-                            if qty > 0:
-                                stage_cbm = qty * product_cbm
-                                total_tracked_cbm += stage_cbm
-                                active_stations.append((stage, qty, stage_cbm))
-                    except:
-                        active_stations = []
-                        total_tracked_cbm = 0
-                    
-                    # Order header
-                    col1, col2, col3, col4 = st.columns([2.5, 2, 1, 0.5])
-                    
-                    with col1:
-                        st.markdown(f"**{row['Order ID']}**")
-                        st.caption(f"{row['Buyer']} | {row['Produk']}")
-                    
-                    with col2:
-                        st.caption(f"Order: {row['Order Date']}")
-                        st.caption(f"Due: {row['Due Date']}")
-                    
-                    with col3:
-                        progress_val = int(row['Progress'].rstrip('%'))
-                        st.progress(progress_val / 100)
-                        st.caption(f"{row['Progress']}")
-                    
-                    with col4:
-                        if row['Tracking Status'] == 'Done':
-                            st.success("✅")
-                        else:
-                            st.info("🔄")
-                    
-                    # Show workstation distribution with cubication
-                    if active_stations:
-                        st.markdown(f"<small style='color: #9CA3AF;'>📦 Workstation Distribution (Total: {total_tracked_cbm:.6f} m³):</small>", unsafe_allow_html=True)
-                        
-                        # Create compact workstation display
-                        station_info = []
-                        for stage, qty, cbm in active_stations[:3]:  # Show max 3 stations
-                            pct = (cbm / total_tracked_cbm * 100) if total_tracked_cbm > 0 else 0
-                            station_info.append(f"<span style='background: #1F2937; padding: 2px 6px; border-radius: 3px; margin-right: 5px;'>"
-                                              f"<strong>{stage}:</strong> {qty} pcs ({cbm:.6f} m³, {pct:.1f}%)</span>")
-                        
-                        if len(active_stations) > 3:
-                            station_info.append(f"<span style='color: #60A5FA;'>+{len(active_stations)-3} more...</span>")
-                        
-                        st.markdown(" ".join(station_info), unsafe_allow_html=True)
-                    else:
-                        st.markdown(f"<small style='color: #6B7280;'>No active workstation data</small>", unsafe_allow_html=True)
-                    
-                    st.divider()
-                
-                st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown(f"""
+            <div style="background: #1F2937; padding: 20px; border-radius: 10px; border: 2px solid {bar_color};">
+                <h4 style="color: white; margin-bottom: 10px;">📦 Storage Capacity: {status_text}</h4>
+                <div style="background: #374151; height: 40px; border-radius: 8px; overflow: hidden; position: relative;">
+                    <div style="width: {min(storage_percentage, 100):.1f}%; height: 100%; background: {bar_color}; 
+                         display: flex; align-items: center; justify-content: center; transition: width 0.5s;">
+                        <span style="color: white; font-weight: bold; font-size: 1.1em;">{storage_percentage:.1f}%</span>
+                    </div>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-top: 10px; color: #9CA3AF;">
+                    <span>Used: {storage_used_m2:.2f} m²</span>
+                    <span>Available: {storage_available:.2f} m²</span>
+                    <span>Total: {TOTAL_STORAGE_AREA_M2:.0f} m²</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
         
-        with col_right:
-            st.markdown("### 📈 Key Metrics")
-            
-            # Compact metrics
-            total_orders = len(df)
-            ongoing = len(df[df["Tracking Status"] == "On Going"])
-            done = len(df[df["Tracking Status"] == "Done"])
-            total_qty = df["Qty"].sum()
-            
-            col_m1, col_m2 = st.columns(2)
-            col_m1.metric("📦 Total Orders", total_orders)
-            col_m2.metric("🔄 On Going", ongoing)
-            
-            col_m3, col_m4 = st.columns(2)
-            col_m3.metric("✅ Done", done)
-            col_m4.metric("📊 Total Qty", f"{total_qty:,}")
-
-      
-        # Production Status Cards
-        st.markdown("#### 🏭 Production Status")
+        with col_storage2:
+            st.markdown(f"""
+            <div class="storage-card">
+                <h4 style='margin: 0 0 5px 0;'>📐 Floor Space</h4>
+                <h2 style='margin: 5px 0; font-size: 2.2rem;'>{storage_used_m2:.2f} m²</h2>
+                <p style='margin: 5px 0; font-size: 1rem;'>of {TOTAL_STORAGE_AREA_M2:.0f} m² used</p>
+                <p style='margin: 5px 0; font-size: 0.9rem;'>({storage_percentage:.1f}% capacity)</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # ===== PRODUCTION STATUS CARDS =====
+        st.markdown("### 🏭 Production Status")
         col_prod1, col_prod2, col_prod3 = st.columns(3)
         
         with col_prod1:
-            # WIP Card
             st.markdown(f"""
             <div class="wip-card">
                 <h4 style='margin: 0 0 10px 0;'>WIP (Work in Progress)</h4>
@@ -902,9 +1045,8 @@ if st.session_state["menu"] == "Dashboard":
             </div>
             """, unsafe_allow_html=True)
         
-        with col_prod2:            
-            # Finished Goods Card (Packaging)
-           st.markdown(f"""
+        with col_prod2:
+            st.markdown(f"""
             <div class="finished-card">
                 <h4 style='margin: 0 0 10px 0;'>Produk Jadi (Packaging)</h4>
                 <h2 style='margin: 5px 0; font-size: 2.5rem;'>{finished_qty:,} pcs</h2>
@@ -914,8 +1056,7 @@ if st.session_state["menu"] == "Dashboard":
             """, unsafe_allow_html=True)
         
         with col_prod3:
-            # Shipping Card
-             st.markdown(f"""
+            st.markdown(f"""
             <div class="shipping-card">
                 <h4 style='margin: 0 0 10px 0;'>Pengiriman</h4>
                 <h2 style='margin: 5px 0; font-size: 2.5rem;'>{shipping_qty:,} pcs</h2>
@@ -925,497 +1066,57 @@ if st.session_state["menu"] == "Dashboard":
             """, unsafe_allow_html=True)
         
         st.markdown("---")
-
-# ===== SECTION: BUYER PROGRESS TRACKING CHARTS =====
-        st.markdown("### 📊 Progress Tracking per Buyer & Produk")
         
-        # Filter untuk chart
-        col_chart_filter1, col_chart_filter2, col_chart_filter3, col_chart_filter4 = st.columns([2, 2, 2, 2])
+        # ===== RECENT ORDERS =====
+        st.markdown("### 🕒 Recent Orders")
         
-        with col_chart_filter1:
-            chart_buyers = st.multiselect(
-                "Select Buyers", 
-                sorted(df["Buyer"].unique().tolist()),
-                default=sorted(df["Buyer"].unique().tolist())[:3] if len(df["Buyer"].unique()) >= 3 else sorted(df["Buyer"].unique().tolist()),
-                key="chart_buyer_filter"
-            )
+        col_filter1, col_filter2 = st.columns([2, 1])
+        with col_filter1:
+            buyers_list = ["-- All Buyers --"] + sorted(df["Buyer"].unique().tolist())
+            selected_buyer_filter = st.selectbox("Filter by Buyer", buyers_list, key="recent_buyer_filter")
+        with col_filter2:
+            search_recent = st.text_input("🔍 Search", key="search_recent_orders", placeholder="Order ID/Product")
         
-        with col_chart_filter2:
-            # Product filter - dynamically update based on selected buyers
-            if chart_buyers:
-                available_products = df[df["Buyer"].isin(chart_buyers)]["Produk"].unique().tolist()
-            else:
-                available_products = df["Produk"].unique().tolist()
-            
-            chart_products = st.multiselect(
-                "Select Products",
-                ["-- All Products --"] + sorted(available_products),
-                default=["-- All Products --"],
-                key="chart_product_filter"
-            )
-        
-        with col_chart_filter3:
-            # Date range filter
-            min_date = df['Order Date'].min()
-            max_date = df['Due Date'].max()
-            date_range = st.date_input(
-                "Date Range",
-                value=(min_date, max_date),
-                min_value=min_date,
-                max_value=max_date,
-                key="chart_date_range"
-            )
-        
-        with col_chart_filter4:
-            chart_metric = st.selectbox(
-                "Metric Display",
-                ["CBM Progress", "Qty Progress", "Both"],
-                key="chart_metric_select"
-            )
-        
-        # Group by option
-        col_group1, col_group2 = st.columns([1, 3])
-        with col_group1:
-            group_by = st.radio(
-                "Group By",
-                ["Buyer", "Product", "Buyer + Product"],
-                horizontal=True,
-                key="chart_group_by"
-            )
-        
-        if chart_buyers:
-            # Filter data berdasarkan buyer, product, dan date range
-            df_chart = df[df["Buyer"].isin(chart_buyers)].copy()
-            
-            # Apply product filter
-            if "-- All Products --" not in chart_products and chart_products:
-                df_chart = df_chart[df_chart["Produk"].isin(chart_products)]
-            
-            # Convert date columns to datetime if not already
-            df_chart['Order Date'] = pd.to_datetime(df_chart['Order Date'])
-            df_chart['Due Date'] = pd.to_datetime(df_chart['Due Date'])
-            
-            # Apply date range filter
-            if len(date_range) == 2:
-                start_date = pd.Timestamp(date_range[0])
-                end_date = pd.Timestamp(date_range[1])
-                
-                df_chart = df_chart[
-                    (df_chart['Order Date'] >= start_date) &
-                    (df_chart['Due Date'] <= end_date)
-                ]
-            
-            if not df_chart.empty:
-                # Prepare data untuk chart berdasarkan grouping
-                stages = get_tracking_stages()
-                
-                # Data structure depends on grouping
-                if group_by == "Buyer":
-                    # Group by buyer only
-                    group_stage_data = {}
-                    
-                    for buyer in chart_buyers:
-                        group_stage_data[buyer] = {}
-                        buyer_orders = df_chart[df_chart["Buyer"] == buyer]
-                        
-                        for stage in stages:
-                            total_qty = 0
-                            total_cbm = 0
-                            
-                            for idx, order in buyer_orders.iterrows():
-                                try:
-                                    tracking_data = json.loads(order["Tracking"])
-                                    qty_in_stage = tracking_data.get(stage, {}).get("qty", 0)
-                                    
-                                    if qty_in_stage > 0:
-                                        if order.get("Is Knockdown", False):
-                                            try:
-                                                knockdown_pieces = json.loads(order.get("Knockdown Pieces", "[]"))
-                                                cbm_per_unit = sum([piece.get("cbm", 0) for piece in knockdown_pieces])
-                                            except:
-                                                cbm_per_unit = float(order.get("CBM per Pcs", 0))
-                                        else:
-                                            cbm_per_unit = float(order.get("CBM per Pcs", 0))
-                                        
-                                        total_qty += qty_in_stage
-                                        total_cbm += qty_in_stage * cbm_per_unit
-                                except Exception as e:
-                                    continue
-                            
-                            group_stage_data[buyer][stage] = {
-                                "qty": total_qty,
-                                "cbm": total_cbm
-                            }
-                
-                elif group_by == "Product":
-                    # Group by product only
-                    group_stage_data = {}
-                    products_in_chart = df_chart["Produk"].unique()
-                    
-                    for product in products_in_chart:
-                        group_stage_data[product] = {}
-                        product_orders = df_chart[df_chart["Produk"] == product]
-                        
-                        for stage in stages:
-                            total_qty = 0
-                            total_cbm = 0
-                            
-                            for idx, order in product_orders.iterrows():
-                                try:
-                                    tracking_data = json.loads(order["Tracking"])
-                                    qty_in_stage = tracking_data.get(stage, {}).get("qty", 0)
-                                    
-                                    if qty_in_stage > 0:
-                                        if order.get("Is Knockdown", False):
-                                            try:
-                                                knockdown_pieces = json.loads(order.get("Knockdown Pieces", "[]"))
-                                                cbm_per_unit = sum([piece.get("cbm", 0) for piece in knockdown_pieces])
-                                            except:
-                                                cbm_per_unit = float(order.get("CBM per Pcs", 0))
-                                        else:
-                                            cbm_per_unit = float(order.get("CBM per Pcs", 0))
-                                        
-                                        total_qty += qty_in_stage
-                                        total_cbm += qty_in_stage * cbm_per_unit
-                                except Exception as e:
-                                    continue
-                            
-                            group_stage_data[product][stage] = {
-                                "qty": total_qty,
-                                "cbm": total_cbm
-                            }
-                
-                else:  # Buyer + Product
-                    # Group by buyer and product combination
-                    group_stage_data = {}
-                    
-                    for buyer in chart_buyers:
-                        buyer_orders = df_chart[df_chart["Buyer"] == buyer]
-                        products_in_buyer = buyer_orders["Produk"].unique()
-                        
-                        for product in products_in_buyer:
-                            group_key = f"{buyer} - {product}"
-                            group_stage_data[group_key] = {}
-                            
-                            combo_orders = buyer_orders[buyer_orders["Produk"] == product]
-                            
-                            for stage in stages:
-                                total_qty = 0
-                                total_cbm = 0
-                                
-                                for idx, order in combo_orders.iterrows():
-                                    try:
-                                        tracking_data = json.loads(order["Tracking"])
-                                        qty_in_stage = tracking_data.get(stage, {}).get("qty", 0)
-                                        
-                                        if qty_in_stage > 0:
-                                            if order.get("Is Knockdown", False):
-                                                try:
-                                                    knockdown_pieces = json.loads(order.get("Knockdown Pieces", "[]"))
-                                                    cbm_per_unit = sum([piece.get("cbm", 0) for piece in knockdown_pieces])
-                                                except:
-                                                    cbm_per_unit = float(order.get("CBM per Pcs", 0))
-                                            else:
-                                                cbm_per_unit = float(order.get("CBM per Pcs", 0))
-                                            
-                                            total_qty += qty_in_stage
-                                            total_cbm += qty_in_stage * cbm_per_unit
-                                    except Exception as e:
-                                        continue
-                                
-                                group_stage_data[group_key][stage] = {
-                                    "qty": total_qty,
-                                    "cbm": total_cbm
-                                }
-                
-                # Create charts based on selected metric
-                if chart_metric == "CBM Progress" or chart_metric == "Both":
-                    st.markdown("#### 📦 CBM Distribution per Workstation")
-                    
-                    # Prepare data for stacked bar chart (CBM)
-                    chart_data_cbm = []
-                    for group_key in group_stage_data.keys():
-                        for stage in stages:
-                            cbm_val = group_stage_data[group_key][stage]["cbm"]
-                            if cbm_val > 0:
-                                chart_data_cbm.append({
-                                    "Group": group_key,
-                                    "Stage": stage,
-                                    "CBM": cbm_val
-                                })
-                    
-                    if chart_data_cbm:
-                        df_cbm = pd.DataFrame(chart_data_cbm)
-                        
-                        fig_cbm = px.bar(
-                            df_cbm,
-                            x="Group",
-                            y="CBM",
-                            color="Stage",
-                            title=f"CBM Distribution by Workstation - Grouped by {group_by} (m³)",
-                            labels={"CBM": "Volume (m³)", "Stage": "Workstation", "Group": group_by},
-                            barmode="stack",
-                            height=400
-                        )
-                        
-                        fig_cbm.update_layout(
-                            xaxis_title=group_by,
-                            yaxis_title="Total CBM (m³)",
-                            legend_title="Workstation",
-                            hovermode='x unified',
-                            xaxis_tickangle=-45
-                        )
-                        
-                        st.plotly_chart(fig_cbm, use_container_width=True)
-                        
-                        # Summary table for CBM
-                        col_summary1, col_summary2 = st.columns(2)
-                        
-                        with col_summary1:
-                            st.markdown(f"**📊 CBM Summary per {group_by}**")
-                            cbm_summary = {}
-                            for group_key in group_stage_data.keys():
-                                total_cbm = sum([data["cbm"] for data in group_stage_data[group_key].values()])
-                                if total_cbm > 0:
-                                    cbm_summary[group_key] = total_cbm
-                            
-                            if cbm_summary:
-                                summary_df = pd.DataFrame(list(cbm_summary.items()), columns=[group_by, "Total CBM"])
-                                summary_df["Total CBM"] = summary_df["Total CBM"].apply(lambda x: f"{x:.6f} m³")
-                                summary_df = summary_df.sort_values("Total CBM", ascending=False)
-                                st.dataframe(summary_df, use_container_width=True, hide_index=True)
-                        
-                        with col_summary2:
-                            st.markdown("**📈 CBM Percentage Distribution**")
-                            total_all_cbm = sum(cbm_summary.values())
-                            if total_all_cbm > 0:
-                                pct_data = []
-                                for group_key, cbm in cbm_summary.items():
-                                    pct = (cbm / total_all_cbm) * 100
-                                    pct_data.append({group_by: group_key, "Percentage": f"{pct:.2f}%", "Sort": pct})
-                                
-                                pct_df = pd.DataFrame(pct_data)
-                                pct_df = pct_df.sort_values("Sort", ascending=False).drop("Sort", axis=1)
-                                st.dataframe(pct_df, use_container_width=True, hide_index=True)
-                    else:
-                        st.info("No CBM data available for selected filters")
-                
-                if chart_metric == "Qty Progress" or chart_metric == "Both":
-                    st.markdown("#### 📦 Quantity Distribution per Workstation")
-                    
-                    # Prepare data for stacked bar chart (Qty)
-                    chart_data_qty = []
-                    for group_key in group_stage_data.keys():
-                        for stage in stages:
-                            qty_val = group_stage_data[group_key][stage]["qty"]
-                            if qty_val > 0:
-                                chart_data_qty.append({
-                                    "Group": group_key,
-                                    "Stage": stage,
-                                    "Qty": qty_val
-                                })
-                    
-                    if chart_data_qty:
-                        df_qty = pd.DataFrame(chart_data_qty)
-                        
-                        fig_qty = px.bar(
-                            df_qty,
-                            x="Group",
-                            y="Qty",
-                            color="Stage",
-                            title=f"Quantity Distribution by Workstation - Grouped by {group_by} (pcs)",
-                            labels={"Qty": "Quantity (pcs)", "Stage": "Workstation", "Group": group_by},
-                            barmode="stack",
-                            height=400
-                        )
-                        
-                        fig_qty.update_layout(
-                            xaxis_title=group_by,
-                            yaxis_title="Total Quantity (pcs)",
-                            legend_title="Workstation",
-                            hovermode='x unified',
-                            xaxis_tickangle=-45
-                        )
-                        
-                        st.plotly_chart(fig_qty, use_container_width=True)
-                        
-                        # Summary table for Qty
-                        col_qty_sum1, col_qty_sum2 = st.columns(2)
-                        
-                        with col_qty_sum1:
-                            st.markdown(f"**📊 Quantity Summary per {group_by}**")
-                            qty_summary = {}
-                            for group_key in group_stage_data.keys():
-                                total_qty = sum([data["qty"] for data in group_stage_data[group_key].values()])
-                                if total_qty > 0:
-                                    qty_summary[group_key] = total_qty
-                            
-                            if qty_summary:
-                                qty_summary_df = pd.DataFrame(list(qty_summary.items()), columns=[group_by, "Total Qty"])
-                                qty_summary_df["Total Qty"] = qty_summary_df["Total Qty"].apply(lambda x: f"{x:,} pcs")
-                                qty_summary_df = qty_summary_df.sort_values("Total Qty", ascending=False)
-                                st.dataframe(qty_summary_df, use_container_width=True, hide_index=True)
-                        
-                        with col_qty_sum2:
-                            st.markdown("**📈 Qty Percentage Distribution**")
-                            total_all_qty = sum(qty_summary.values())
-                            if total_all_qty > 0:
-                                pct_qty_data = []
-                                for group_key, qty in qty_summary.items():
-                                    pct = (qty / total_all_qty) * 100
-                                    pct_qty_data.append({group_by: group_key, "Percentage": f"{pct:.2f}%", "Sort": pct})
-                                
-                                pct_qty_df = pd.DataFrame(pct_qty_data)
-                                pct_qty_df = pct_qty_df.sort_values("Sort", ascending=False).drop("Sort", axis=1)
-                                st.dataframe(pct_qty_df, use_container_width=True, hide_index=True)
-                    else:
-                        st.info("No quantity data available for selected filters")
-                
-                # Detailed breakdown by stage
-                st.markdown("---")
-                st.markdown("#### 🔍 Detailed Breakdown by Workstation")
-                
-                # Create detailed table
-                detailed_data = []
-                for group_key in group_stage_data.keys():
-                    for stage in stages:
-                        qty = group_stage_data[group_key][stage]["qty"]
-                        cbm = group_stage_data[group_key][stage]["cbm"]
-                        
-                        if qty > 0 or cbm > 0:
-                            # Calculate percentage
-                            group_total_cbm = sum([data["cbm"] for data in group_stage_data[group_key].values()])
-                            group_total_qty = sum([data["qty"] for data in group_stage_data[group_key].values()])
-                            
-                            cbm_pct = (cbm / group_total_cbm * 100) if group_total_cbm > 0 else 0
-                            qty_pct = (qty / group_total_qty * 100) if group_total_qty > 0 else 0
-                            
-                            detailed_data.append({
-                                group_by: group_key,
-                                "Workstation": stage,
-                                "Qty (pcs)": f"{qty:,}",
-                                "Qty %": f"{qty_pct:.1f}%",
-                                "CBM (m³)": f"{cbm:.6f}",
-                                "CBM %": f"{cbm_pct:.1f}%"
-                            })
-                
-                if detailed_data:
-                    detailed_df = pd.DataFrame(detailed_data)
-                    st.dataframe(detailed_df, use_container_width=True, hide_index=True)
-                    
-                    # Export option
-                    csv_export = detailed_df.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="📥 Download Detailed Report (CSV)",
-                        data=csv_export,
-                        file_name=f"workstation_breakdown_{datetime.date.today()}.csv",
-                        mime="text/csv",
-                        use_container_width=True
-                    )
-                else:
-                    st.info("No detailed data available")
-            else:
-                st.warning("No orders found for selected filters")
+        if selected_buyer_filter and selected_buyer_filter != "-- All Buyers --":
+            recent_df = df[df["Buyer"] == selected_buyer_filter].sort_values("Order Date", ascending=False)
         else:
-            st.info("Please select at least one buyer to display charts")
+            recent_df = df.sort_values("Order Date", ascending=False)
+        
+        if search_recent:
+            recent_df = recent_df[
+                recent_df["Order ID"].str.contains(search_recent, case=False, na=False) | 
+                recent_df["Produk"].str.contains(search_recent, case=False, na=False)
+            ]
+        
+        st.caption(f"📊 Showing {len(recent_df)} orders")
+        
+        for idx, row in recent_df.head(10).iterrows():
+            col1, col2, col3, col4 = st.columns([2.5, 2, 1, 0.5])
+            
+            with col1:
+                st.markdown(f"**{row['Order ID']}**")
+                st.caption(f"{row['Buyer']} | {row['Produk']}")
+            
+            with col2:
+                st.caption(f"Order: {row['Order Date']}")
+                st.caption(f"Due: {row['Due Date']}")
+            
+            with col3:
+                progress_val = int(row['Progress'].rstrip('%'))
+                st.progress(progress_val / 100)
+                st.caption(f"{row['Progress']}")
+            
+            with col4:
+                if row['Tracking Status'] == 'Done':
+                    st.success("✅")
+                else:
+                    st.info("🔄")
+            
+            st.divider()
         
         st.markdown("---")
         
-# ===== SECTION 2: PRODUCTION CALENDAR =====
-        col_cal, col_chart = st.columns([2, 1])
-        
-        with col_cal:
-            st.markdown("### 📅 Production Calendar")
-            
-            today = datetime.date.today()
-            current_month = today.month
-            current_year = today.year
-            
-            col_month, col_year = st.columns(2)
-            with col_month:
-                months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", 
-                         "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
-                selected_month = st.selectbox("Bulan", months, index=current_month - 1, key="cal_month")
-                month_num = months.index(selected_month) + 1
-            
-            with col_year:
-                years = list(range(current_year - 1, current_year + 3))
-                selected_year = st.selectbox("Tahun", years, index=1, key="cal_year")
-            
-            # Filter orders by selected month/year
-            df_copy = df.copy()
-            df_copy['Due Date'] = pd.to_datetime(df_copy['Due Date'])
-            df_month = df_copy[(df_copy['Due Date'].dt.month == month_num) & 
-                         (df_copy['Due Date'].dt.year == selected_year)]
-            
-            if not df_month.empty:
-                st.markdown(f"**📌 {len(df_month)} orders di bulan ini**")
-            
-            # Create calendar view
-            import calendar
-            cal = calendar.monthcalendar(selected_year, month_num)
-            
-            days = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"]
-            header_cols = st.columns(7)
-            for i, day in enumerate(days):
-                header_cols[i].markdown(f"<center><b>{day}</b></center>", unsafe_allow_html=True)
-            
-            for week in cal:
-                week_cols = st.columns(7)
-                for i, day in enumerate(week):
-                    if day == 0:
-                        week_cols[i].markdown("")
-                    else:
-                        date_obj = datetime.date(selected_year, month_num, day)
-                        
-                        if not df_month.empty:
-                            orders_on_date = df_month[df_month['Due Date'].dt.date == date_obj]
-                            
-                            if len(orders_on_date) > 0:
-                                done_count = len(orders_on_date[orders_on_date['Tracking Status'] == 'Done'])
-                                if done_count == len(orders_on_date):
-                                    bg_color = "#10B981"
-                                elif date_obj < today:
-                                    bg_color = "#EF4444"
-                                elif date_obj == today:
-                                    bg_color = "#F59E0B"
-                                else:
-                                    bg_color = "#3B82F6"
-                                
-                                week_cols[i].markdown(f"""
-                                <div style='background-color: {bg_color}; padding: 5px; border-radius: 5px; text-align: center;'>
-                                    <b style='color: white;'>{day}</b><br>
-                                    <span style='color: white; font-size: 10px;'>{len(orders_on_date)}</span>
-                                </div>
-                                """, unsafe_allow_html=True)
-                            else:
-                                if date_obj == today:
-                                    week_cols[i].markdown(f"<div style='padding: 5px; text-align: center; border: 2px solid #3B82F6; border-radius: 5px;'><b>{day}</b></div>", unsafe_allow_html=True)
-                                else:
-                                    week_cols[i].markdown(f"<div style='padding: 5px; text-align: center;'>{day}</div>", unsafe_allow_html=True)
-                        else:
-                            if date_obj == today:
-                                week_cols[i].markdown(f"<div style='padding: 5px; text-align: center; border: 2px solid #3B82F6; border-radius: 5px;'><b>{day}</b></div>", unsafe_allow_html=True)
-                            else:
-                                week_cols[i].markdown(f"<div style='padding: 5px; text-align: center;'>{day}</div>", unsafe_allow_html=True)
-        
-        with col_chart:
-            st.markdown("### 📊 Status Distribution")
-            
-            status_dist = df["Tracking Status"].value_counts()
-            fig_status = px.pie(
-                values=status_dist.values, 
-                names=status_dist.index,
-                color_discrete_map={"On Going": "#3B82F6", "Done": "#10B981"},
-                hole=0.4
-            )
-            fig_status.update_traces(textposition='inside', textinfo='percent+label')
-            fig_status.update_layout(showlegend=True, height=250, margin=dict(t=0, b=0, l=0, r=0))
-            st.plotly_chart(fig_status, use_container_width=True)
-        
-        st.markdown("---")
-        
-        # ===== SECTION 3: PRODUCTION PROGRESS BY STAGE =====
+        # ===== PRODUCTION PROGRESS BY STAGE =====
         st.markdown("### 🏭 Production Progress by Stage")
         
         stages = get_tracking_stages()
@@ -1448,8 +1149,8 @@ if st.session_state["menu"] == "Dashboard":
         st.plotly_chart(fig_stages, use_container_width=True)
     else:
         st.info("📝 Belum ada data. Silakan input pesanan baru.")
-        
-# ===== MENU: INPUT PESANAN BARU =====
+
+#input
 elif st.session_state["menu"] == "Input":
     st.markdown("<h2 style='margin: 0;'>📋 Form Input Pesanan Baru (Multi-Product)</h2>", unsafe_allow_html=True)
     
@@ -1476,46 +1177,105 @@ elif st.session_state["menu"] == "Input":
     st.markdown("---")
     st.markdown("#### 📦 Tambah Produk ke Order")
     
-    # Product type selection
     col_type1, col_type2 = st.columns([1, 3])
     with col_type1:
-        is_knockdown = st.checkbox("🔧 Produk Knockdown", key="is_knockdown_check", 
-                                   help="Centang jika produk terdiri dari beberapa piece dengan kubikasi berbeda")
+        is_knockdown = st.checkbox("🔧 Produk Knockdown", key="is_knockdown_check")
     
     with col_type2:
         if is_knockdown:
-            st.info("💡 **Mode Knockdown**: Produk akan terbagi menjadi beberapa pieces dengan packing size berbeda")
+            st.info("💡 **Mode Knockdown**: Produk terdiri dari beberapa pieces")
         else:
             st.info("📦 **Mode Normal**: Satu produk = satu packing size")
-    
-    # Create properly aligned columns for form
+
+    # Product selection with auto-fill
     with st.container():
         col1, col2, col3 = st.columns([1, 1, 1])
         
         with col1:
             st.markdown("**Product Information**")
             products_list = st.session_state["products"]
+            
+            if "selected_product_cache" not in st.session_state:
+                st.session_state["selected_product_cache"] = ""
+            if "knockdown_pieces" not in st.session_state:
+                st.session_state["knockdown_pieces"] = []
+            if "autofill_image_path" not in st.session_state:
+                st.session_state["autofill_image_path"] = ""
+            
             if products_list:
-                produk_option = st.selectbox("Pilih Produk", ["-- Pilih dari Database --"] + products_list, key="form_produk_select")
-                if produk_option == "-- Pilih dari Database --":
-                    produk_name = st.text_input("Atau ketik nama produk baru", key="form_produk_manual")
-                else:
+                product_names = [p.get("name", "") for p in products_list]
+                produk_option = st.selectbox(
+                    "Pilih Produk", 
+                    ["-- Input Manual --", "-- Pilih dari Database --"] + product_names, 
+                    key="form_produk_select"
+                )
+                
+                # Auto-fill logic
+                if produk_option != st.session_state["selected_product_cache"]:
+                    st.session_state["selected_product_cache"] = produk_option
+                    
+                    if produk_option in ["-- Input Manual --", "-- Pilih dari Database --"]:
+                        st.session_state["form_material"] = ""
+                        st.session_state["form_finishing"] = ""
+                        st.session_state["form_desc"] = ""
+                        st.session_state["prod_p"] = 0.0
+                        st.session_state["prod_l"] = 0.0
+                        st.session_state["prod_t"] = 0.0
+                        st.session_state["pack_p"] = 0.0
+                        st.session_state["pack_l"] = 0.0
+                        st.session_state["pack_t"] = 0.0
+                        st.session_state["knockdown_pieces"] = []
+                        st.session_state["autofill_image_path"] = ""
+                        st.rerun()
+                    else:
+                        selected_product = get_product_by_name(produk_option)
+                        if selected_product:
+                            st.session_state["form_material"] = selected_product.get("material", "")
+                            st.session_state["form_finishing"] = selected_product.get("finishing", "")
+                            st.session_state["form_desc"] = selected_product.get("description", "")
+                            st.session_state["prod_p"] = float(selected_product.get("product_size_p", 0))
+                            st.session_state["prod_l"] = float(selected_product.get("product_size_l", 0))
+                            st.session_state["prod_t"] = float(selected_product.get("product_size_t", 0))
+                            st.session_state["pack_p"] = float(selected_product.get("packing_size_p", 0))
+                            st.session_state["pack_l"] = float(selected_product.get("packing_size_l", 0))
+                            st.session_state["pack_t"] = float(selected_product.get("packing_size_t", 0))
+                            st.session_state["autofill_image_path"] = selected_product.get("image_path", "")
+                            
+                            if selected_product.get("is_knockdown", False):
+                                pieces = selected_product.get("knockdown_pieces", [])
+                                st.session_state["knockdown_pieces"] = [piece.copy() for piece in pieces]
+                            else:
+                                st.session_state["knockdown_pieces"] = []
+                            
+                            st.rerun()
+                
+                if produk_option == "-- Input Manual --":
+                    produk_name = st.text_input("Nama Produk Manual", key="form_produk_manual")
+                elif produk_option not in ["-- Input Manual --", "-- Pilih dari Database --"]:
                     produk_name = produk_option
+                    st.success(f"✅ Product '{produk_name}' loaded")
+                else:
+                    produk_name = ""
+                    st.info("📝 Pilih produk dari dropdown")
             else:
+                st.warning("⚠️ Product database kosong")
                 produk_name = st.text_input("Nama Produk", key="form_produk")
             
             qty = st.number_input("Quantity (unit)" if not is_knockdown else "Quantity (set)", 
-                                 min_value=1, value=1, key="form_qty",
-                                 help="Jumlah unit produk" if not is_knockdown else "Jumlah set knockdown")
+                                 min_value=1, value=1, key="form_qty")
             
-            uploaded_image = st.file_uploader("Upload Gambar Produk", 
-                                             type=['jpg', 'jpeg', 'png'], 
-                                             key="form_image")
-        
+            uploaded_image = st.file_uploader("Upload Gambar Produk", type=['jpg', 'jpeg', 'png'], key="form_image")
+            
+            # Show database image if available
+            db_image_path = st.session_state.get("autofill_image_path", "")
+            if db_image_path and os.path.exists(db_image_path) and not uploaded_image:
+                st.image(db_image_path, caption="📷 From Database", width=150)
+            
         with col2:
             st.markdown("**Specifications**")
-            material = st.text_input("Material", placeholder="Contoh: Kayu Jati, MDF", key="form_material")
-            finishing = st.text_input("Finishing", placeholder="Contoh: Natural, Duco Putih", key="form_finishing")
+            
+            material = st.text_input("Material", placeholder="Contoh: Kayu Jati", key="form_material")
+            finishing = st.text_input("Finishing", placeholder="Contoh: Natural", key="form_finishing")
             
             st.markdown("**Product Size (cm)**")
             col_ps1, col_ps2, col_ps3 = st.columns(3)
@@ -1527,14 +1287,15 @@ elif st.session_state["menu"] == "Input":
                 prod_t = st.number_input("T", min_value=0.0, value=None, format="%.2f", key="prod_t", step=0.01, placeholder="0.00")
             
             product_cbm = calculate_cbm(prod_p, prod_l, prod_t)
+            floor_area = calculate_floor_area_m2(prod_p, prod_l)
             if product_cbm > 0:
                 st.success(f"📦 Product CBM: **{product_cbm:.6f} m³**")
+                st.caption(f"📐 Floor area: {floor_area:.4f} m² per unit")
             else:
-                st.info(f"📦 Product CBM: 0.000000 m³")
+                st.info("📦 Product CBM: 0.000000 m³")
         
         with col3:
             if not is_knockdown:
-                # Normal product - single packing
                 st.markdown("**Packing Information**")
                 st.markdown("**Packing Size (cm)**")
                 col_pack1, col_pack2, col_pack3 = st.columns(3)
@@ -1552,27 +1313,23 @@ elif st.session_state["menu"] == "Input":
                     st.success(f"📦 CBM per Unit: **{cbm_per_pcs:.6f} m³**")
                     st.info(f"📦 Total CBM: **{total_cbm:.6f} m³**")
                 else:
-                    st.info(f"📦 CBM per Unit: 0.000000 m³")
-                    st.info(f"📦 Total CBM: 0.000000 m³")
+                    st.info("📦 CBM per Unit: 0.000000 m³")
             else:
-                # Knockdown product - show piece management
                 st.markdown("**🔧 Knockdown Pieces**")
-                st.caption("Tambahkan pieces di bawah form ini")
-                
                 if st.session_state["knockdown_pieces"]:
                     total_cbm_per_set = sum([p["cbm"] for p in st.session_state["knockdown_pieces"]])
                     total_cbm = total_cbm_per_set * qty
                     st.success(f"📦 CBM per Set: **{total_cbm_per_set:.6f} m³**")
-                    st.info(f"📦 Total CBM ({qty} sets): **{total_cbm:.6f} m³**")
-                    st.caption(f"✓ {len(st.session_state['knockdown_pieces'])} pieces ditambahkan")
+                    st.info(f"📦 Total CBM: **{total_cbm:.6f} m³**")
+                    st.caption(f"✓ {len(st.session_state['knockdown_pieces'])} pieces")
                 else:
-                    st.warning("⚠️ Belum ada piece ditambahkan")
+                    st.warning("⚠️ Belum ada piece")
                     total_cbm = 0
                     cbm_per_pcs = 0
                 
                 pack_p, pack_l, pack_t = 0, 0, 0
                 cbm_per_pcs = total_cbm / qty if qty > 0 else 0
-    
+        
     description = st.text_area("Description", placeholder="Deskripsi produk...", height=50, key="form_desc")
     keterangan = st.text_area("Keterangan Tambahan", placeholder="Catatan khusus...", height=50, key="form_notes")
     
@@ -1580,18 +1337,14 @@ elif st.session_state["menu"] == "Input":
     if is_knockdown:
         st.markdown("---")
         st.markdown("### 🔧 Kelola Knockdown Pieces")
-        st.caption("Tambahkan piece-piece yang membentuk 1 set produk knockdown")
         
         with st.expander("➕ Tambah Piece Baru", expanded=True):
             col_kd1, col_kd2, col_kd3, col_kd4 = st.columns([2, 1, 2, 1])
             
             with col_kd1:
-                piece_name = st.text_input("Nama Piece", placeholder="Contoh: Body, Door, Shelf", key="piece_name")
-            
+                piece_name = st.text_input("Nama Piece", placeholder="Body, Door, Shelf", key="piece_name")
             with col_kd2:
-                piece_qty = st.number_input("Qty per Set", min_value=1, value=1, key="piece_qty",
-                                           help="Berapa piece ini dalam 1 set")
-            
+                piece_qty = st.number_input("Qty per Set", min_value=1, value=1, key="piece_qty")
             with col_kd3:
                 st.caption("**Packing Size (cm)**")
                 col_kd_p1, col_kd_p2, col_kd_p3 = st.columns(3)
@@ -1601,47 +1354,27 @@ elif st.session_state["menu"] == "Input":
                     piece_l = st.number_input("L", min_value=0.0, value=0.0, format="%.2f", key="piece_l", step=0.01)
                 with col_kd_p3:
                     piece_t = st.number_input("T", min_value=0.0, value=0.0, format="%.2f", key="piece_t", step=0.01)
-            
             with col_kd4:
                 piece_cbm = calculate_cbm(piece_p, piece_l, piece_t) * piece_qty
                 st.metric("CBM Piece", f"{piece_cbm:.6f}")
                 
                 if st.button("➕ Add Piece", use_container_width=True, type="primary", key="add_piece_btn"):
                     if piece_name and piece_cbm > 0:
-                        new_piece = {
-                            "name": piece_name,
-                            "qty_per_set": piece_qty,
-                            "p": piece_p,
-                            "l": piece_l,
-                            "t": piece_t,
-                            "cbm": piece_cbm
-                        }
+                        new_piece = {"name": piece_name, "qty_per_set": piece_qty, "p": piece_p, "l": piece_l, "t": piece_t, "cbm": piece_cbm}
                         st.session_state["knockdown_pieces"].append(new_piece)
                         st.success(f"✅ Piece '{piece_name}' ditambahkan!")
                         st.rerun()
                     else:
-                        st.warning("⚠️ Nama dan dimensi piece harus diisi!")
+                        st.warning("⚠️ Nama dan dimensi harus diisi!")
         
         if st.session_state["knockdown_pieces"]:
             st.markdown("#### 📋 Pieces dalam Set")
-            
             for idx, piece in enumerate(st.session_state["knockdown_pieces"]):
-                st.markdown(f"""
-                <div class="knockdown-piece">
-                    <span class="piece-badge">Piece {idx + 1}</span>
-                    <strong style="margin-left: 10px; color: #60A5FA;">{piece['name']}</strong>
-                    <span style="color: #9CA3AF; margin-left: 10px;">x{piece['qty_per_set']} pcs</span>
-                    <br>
-                    <small style="color: #D1D5DB;">
-                        Size: {piece['p']:.2f} × {piece['l']:.2f} × {piece['t']:.2f} cm | 
-                        CBM: {piece['cbm']:.6f} m³
-                    </small>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                col_piece1, col_piece2 = st.columns([4, 1])
-                with col_piece2:
-                    if st.button("🗑️ Hapus", key=f"remove_piece_{idx}", use_container_width=True):
+                col_p1, col_p2 = st.columns([4, 1])
+                with col_p1:
+                    st.markdown(f"**{idx+1}. {piece['name']}** (x{piece['qty_per_set']}) - {piece['p']:.2f} × {piece['l']:.2f} × {piece['t']:.2f} cm = {piece['cbm']:.6f} m³")
+                with col_p2:
+                    if st.button("🗑️", key=f"remove_piece_{idx}"):
                         st.session_state["knockdown_pieces"].pop(idx)
                         st.rerun()
     
@@ -1661,6 +1394,10 @@ elif st.session_state["menu"] == "Input":
                     total_cbm = cbm_per_pcs * qty
                     knockdown_pieces_data = []
                 
+                # Use database image if no new upload
+                final_image = uploaded_image
+                final_image_path = st.session_state.get("autofill_image_path", "")
+                
                 temp_product = {
                     "nama": produk_name,
                     "qty": qty,
@@ -1677,64 +1414,56 @@ elif st.session_state["menu"] == "Input":
                     "cbm_per_pcs": cbm_per_pcs,
                     "total_cbm": total_cbm,
                     "keterangan": keterangan if keterangan else "-",
-                    "image": uploaded_image,
+                    "image": final_image,
+                    "image_path_from_db": final_image_path,
                     "is_knockdown": is_knockdown,
                     "knockdown_pieces": knockdown_pieces_data
                 }
                 
                 st.session_state["input_products"].append(temp_product)
-                st.session_state["knockdown_pieces"] = []
-                st.success(f"✅ Produk '{produk_name}' {'(Knockdown)' if is_knockdown else ''} ditambahkan!")
-                st.rerun()
+                
+                # Reset form
+                # st.session_state["form_material"] = ""
+                # st.session_state["form_finishing"] = ""
+                # st.session_state["form_desc"] = ""
+                # st.session_state["prod_p"] = 0.0
+                # st.session_state["prod_l"] = 0.0
+                # st.session_state["prod_t"] = 0.0
+                # st.session_state["pack_p"] = 0.0
+                # st.session_state["pack_l"] = 0.0
+                # st.session_state["pack_t"] = 0.0
+                # st.session_state["selected_product_cache"] = ""
+                # st.session_state["knockdown_pieces"] = []
+                # st.session_state["autofill_image_path"] = ""
+                # st.success(f"✅ Produk '{produk_name}' ditambahkan!")
+                # st.rerun()
         else:
             st.warning("⚠️ Harap isi nama produk dan quantity!")
     
+    # Display added products
     if st.session_state["input_products"]:
         st.markdown("---")
         st.markdown("### 📋 Daftar Produk dalam Order Ini")
         
         for idx, product in enumerate(st.session_state["input_products"]):
-            knockdown_badge = " 🔧 (Knockdown)" if product.get("is_knockdown", False) else ""
-            with st.expander(f"📦 {idx + 1}. {product['nama']}{knockdown_badge} ({product['qty']} unit) - CBM: {product['total_cbm']:.6f} m³", expanded=False):
-                col_display1, col_display2, col_display3 = st.columns([2, 2, 1])
-                
-                with col_display1:
+            knockdown_badge = " 🔧" if product.get("is_knockdown", False) else ""
+            with st.expander(f"📦 {idx + 1}. {product['nama']}{knockdown_badge} ({product['qty']} unit) - CBM: {product['total_cbm']:.6f} m³"):
+                col_d1, col_d2, col_d3 = st.columns([2, 2, 1])
+                with col_d1:
                     st.write(f"**Material:** {product['material']}")
                     st.write(f"**Finishing:** {product['finishing']}")
-                    st.write(f"**Product Size:** {product['prod_p']:.2f} x {product['prod_l']:.2f} x {product['prod_t']:.2f} cm")
-                    st.write(f"**Product CBM:** {product['product_cbm']:.6f} m³")
-                
-                with col_display2:
-                    if product.get("is_knockdown", False):
-                        st.write(f"**Type:** Knockdown Product")
-                        st.write(f"**Pieces per Set:** {len(product.get('knockdown_pieces', []))}")
-                        st.write(f"**CBM per Set:** {product['cbm_per_pcs']:.6f} m³")
-                        st.write(f"**Total CBM:** {product['total_cbm']:.6f} m³")
-                    else:
-                        st.write(f"**Packing Size:** {product['pack_p']:.2f} x {product['pack_l']:.2f} x {product['pack_t']:.2f} cm")
-                        st.write(f"**CBM per Unit:** {product['cbm_per_pcs']:.6f} m³")
-                        st.write(f"**Total CBM:** {product['total_cbm']:.6f} m³")
-                
-                with col_display3:
-                    if st.button("🗑️ Hapus", key=f"remove_product_{idx}", use_container_width=True):
+                with col_d2:
+                    st.write(f"**CBM per Unit:** {product['cbm_per_pcs']:.6f} m³")
+                    st.write(f"**Total CBM:** {product['total_cbm']:.6f} m³")
+                with col_d3:
+                    if st.button("🗑️ Hapus", key=f"remove_product_{idx}"):
                         st.session_state["input_products"].pop(idx)
                         st.rerun()
-                
-                if product.get("is_knockdown", False) and product.get("knockdown_pieces"):
-                    st.markdown("---")
-                    st.markdown("**🔧 Knockdown Pieces:**")
-                    for piece_idx, piece in enumerate(product["knockdown_pieces"]):
-                        st.markdown(f"""
-                        <div style="background: #1F2937; padding: 8px; margin: 4px 0; border-radius: 4px; border-left: 3px solid #3B82F6;">
-                            <strong>{piece_idx + 1}. {piece['name']}</strong> (x{piece['qty_per_set']}) - 
-                            {piece['p']:.2f} × {piece['l']:.2f} × {piece['t']:.2f} cm = {piece['cbm']:.6f} m³
-                        </div>
-                        """, unsafe_allow_html=True)
         
         total_cbm_all = sum([p['total_cbm'] for p in st.session_state["input_products"]])
-        st.info(f"📦 Total CBM untuk semua produk: **{total_cbm_all:.6f} m³**")
+        st.info(f"📦 Total CBM semua produk: **{total_cbm_all:.6f} m³**")
         
-        col_submit1, col_submit2, col_submit3 = st.columns([1, 1, 2])
+        col_submit1, col_submit2 = st.columns(2)
         
         with col_submit1:
             if st.button("🗑️ BATAL", use_container_width=True, type="secondary"):
@@ -1752,13 +1481,16 @@ elif st.session_state["menu"] == "Input":
                     new_orders = []
                     
                     for prod_idx, product in enumerate(st.session_state["input_products"]):
+                        # Handle image - use uploaded or database image
                         image_path = None
                         if product.get("image"):
                             image_path = save_uploaded_image(product["image"], new_order_id, prod_idx)
+                        elif product.get("image_path_from_db"):
+                            image_path = product["image_path_from_db"]
                         
                         initial_history = [add_history_entry(f"{new_order_id}-P{prod_idx+1}", "Order Created", 
-                        f"Product: {product['nama']}, Priority: {prioritas}, Type: {'Knockdown' if product.get('is_knockdown', False) else 'Normal'}")]
-                       
+                            f"Product: {product['nama']}, Priority: {prioritas}")]
+                        
                         tracking_data = init_tracking_data()
                         first_stage = get_tracking_stages()[0]
                         tracking_data[first_stage]["qty"] = product["qty"]
@@ -1801,13 +1533,562 @@ elif st.session_state["menu"] == "Input":
                     )
                     
                     if save_data(st.session_state["data_produksi"]):
-                        st.success(f"✅ Order {new_order_id} dengan {len(st.session_state['input_products'])} produk berhasil ditambahkan!")
+                        st.success(f"✅ Order {new_order_id} dengan {len(st.session_state['input_products'])} produk berhasil!")
                         st.balloons()
                         st.session_state["input_products"] = []
                         st.session_state["knockdown_pieces"] = []
                         st.rerun()
                 else:
-                    st.warning("⚠️ Harap pilih buyer dan tambahkan minimal 1 produk!")
+                    st.warning("⚠️ Pilih buyer dan tambahkan minimal 1 produk!")
+
+# ===== MENU: ABSENSI - NEW =====
+elif st.session_state["menu"] == "Absensi":
+    st.header("📝 ABSENSI PEKERJA HARIAN")
+    st.caption("Input kehadiran pekerja oleh Mandor")
+    
+    workers = st.session_state["workers"]
+    attendance_list = st.session_state["attendance"]
+    
+    if not workers:
+        st.warning("⚠️ Belum ada data pekerja. Silakan tambah pekerja di menu Database → Pekerja Harian")
+        st.stop()
+    
+    tab1, tab2, tab3 = st.tabs(["📝 Input Absensi Hari Ini", "📋 Riwayat Absensi", "📊 Laporan"])
+    
+    with tab1:
+        st.markdown("### 📅 Input Absensi")
+        
+        col_date1, col_date2 = st.columns(2)
+        with col_date1:
+            attendance_date = st.date_input("Tanggal Absensi", datetime.date.today(), key="attendance_date")
+        with col_date2:
+            st.info(f"📆 {attendance_date.strftime('%A, %d %B %Y')}")
+        
+        date_str = str(attendance_date)
+        existing_attendance = get_attendance_by_date(date_str)
+        
+        if existing_attendance:
+            st.warning(f"⚠️ Absensi tanggal {date_str} sudah ada. Anda bisa mengeditnya.")
+            existing_records = existing_attendance.get("records", {})
+        else:
+            existing_records = {}
+        
+        st.markdown("---")
+        
+        # Quick action: Mark all present
+        col_quick1, col_quick2 = st.columns(2)
+        with col_quick1:
+            if st.button("✅ Tandai Semua HADIR", use_container_width=True, type="primary"):
+                st.session_state["mark_all_present"] = True
+                st.rerun()
+        with col_quick2:
+            if st.button("🔄 Reset Form", use_container_width=True, type="secondary"):
+                if "mark_all_present" in st.session_state:
+                    del st.session_state["mark_all_present"]
+                st.rerun()
+        
+        mark_all = st.session_state.get("mark_all_present", False)
+        
+        st.markdown("---")
+        st.markdown("### 👷 Daftar Pekerja")
+        st.caption("💡 **Tip**: Centang 'Semua Hadir' lalu hanya edit yang tidak masuk/overtime")
+        
+        # Create attendance form
+        attendance_data = {}
+        
+        for idx, worker in enumerate(workers):
+            worker_id = worker.get("id", str(idx))
+            worker_name = worker.get("name", "Unknown")
+            worker_position = worker.get("position", "-")
+            
+            # Get existing record or default
+            existing = existing_records.get(worker_id, {})
+            
+            with st.container():
+                st.markdown(f"""
+                <div class="attendance-card">
+                    <strong style="color: #60A5FA; font-size: 1.1em;">👤 {worker_name}</strong>
+                    <span style="color: #9CA3AF; margin-left: 10px;">{worker_position}</span>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                col_att1, col_att2, col_att3, col_att4 = st.columns([1, 1, 1, 1])
+                
+                with col_att1:
+                    # Status
+                    default_status = "Hadir" if mark_all else existing.get("status", "Hadir")
+                    status = st.selectbox(
+                        "Status",
+                        ["Hadir", "Tidak Hadir", "Izin", "Sakit"],
+                        index=["Hadir", "Tidak Hadir", "Izin", "Sakit"].index(default_status),
+                        key=f"status_{worker_id}"
+                    )
+                
+                with col_att2:
+                    # Check-in time
+                    if status == "Hadir":
+                        default_checkin = existing.get("check_in", "08:00")
+                        check_in = st.text_input("Jam Masuk", value=default_checkin, key=f"checkin_{worker_id}", placeholder="08:00")
+                    else:
+                        check_in = "-"
+                        st.text_input("Jam Masuk", value="-", disabled=True, key=f"checkin_{worker_id}")
+                
+                with col_att3:
+                    # Check-out time
+                    if status == "Hadir":
+                        default_checkout = existing.get("check_out", "16:00")
+                        check_out = st.text_input("Jam Pulang", value=default_checkout, key=f"checkout_{worker_id}", placeholder="16:00")
+                    else:
+                        check_out = "-"
+                        st.text_input("Jam Pulang", value="-", disabled=True, key=f"checkout_{worker_id}")
+                
+                with col_att4:
+                    # Overtime
+                    if status == "Hadir":
+                        is_overtime = st.checkbox("⏰ Overtime", value=existing.get("overtime", False), key=f"overtime_{worker_id}")
+                    else:
+                        is_overtime = False
+                        st.checkbox("⏰ Overtime", value=False, disabled=True, key=f"overtime_{worker_id}")
+                
+                attendance_data[worker_id] = {
+                    "name": worker_name,
+                    "position": worker_position,
+                    "status": status,
+                    "check_in": check_in,
+                    "check_out": check_out,
+                    "overtime": is_overtime
+                }
+                
+                st.markdown("---")
+        
+        # Save button
+        if st.button("💾 SIMPAN ABSENSI", use_container_width=True, type="primary"):
+            # Count statistics
+            hadir_count = sum(1 for r in attendance_data.values() if r["status"] == "Hadir")
+            tidak_hadir = sum(1 for r in attendance_data.values() if r["status"] == "Tidak Hadir")
+            izin_count = sum(1 for r in attendance_data.values() if r["status"] == "Izin")
+            sakit_count = sum(1 for r in attendance_data.values() if r["status"] == "Sakit")
+            overtime_count = sum(1 for r in attendance_data.values() if r.get("overtime", False))
+            
+            new_attendance = {
+                "date": date_str,
+                "created_at": str(datetime.datetime.now()),
+                "created_by": st.session_state.get("user_name", "Unknown"),
+                "total_workers": len(workers),
+                "hadir": hadir_count,
+                "tidak_hadir": tidak_hadir,
+                "izin": izin_count,
+                "sakit": sakit_count,
+                "overtime": overtime_count,
+                "records": attendance_data
+            }
+            
+            # Update or add
+            updated = False
+            for i, att in enumerate(attendance_list):
+                if att.get("date") == date_str:
+                    attendance_list[i] = new_attendance
+                    updated = True
+                    break
+            
+            if not updated:
+                attendance_list.append(new_attendance)
+            
+            st.session_state["attendance"] = attendance_list
+            if save_attendance(attendance_list):
+                st.success(f"✅ Absensi tanggal {date_str} berhasil disimpan!")
+                st.info(f"📊 Hadir: {hadir_count} | Tidak Hadir: {tidak_hadir} | Izin: {izin_count} | Sakit: {sakit_count} | Overtime: {overtime_count}")
+                if "mark_all_present" in st.session_state:
+                    del st.session_state["mark_all_present"]
+                st.balloons()
+    
+    with tab2:
+        st.markdown("### 📋 Riwayat Absensi")
+        
+        if attendance_list:
+            # Sort by date descending
+            sorted_attendance = sorted(attendance_list, key=lambda x: x.get("date", ""), reverse=True)
+            
+            for att in sorted_attendance[:30]:  # Show last 30 days
+                date_display = att.get("date", "Unknown")
+                hadir = att.get("hadir", 0)
+                total = att.get("total_workers", 0)
+                pct = (hadir / total * 100) if total > 0 else 0
+                
+                with st.expander(f"📅 {date_display} | Hadir: {hadir}/{total} ({pct:.0f}%)"):
+                    col_sum1, col_sum2, col_sum3, col_sum4 = st.columns(4)
+                    col_sum1.metric("✅ Hadir", att.get("hadir", 0))
+                    col_sum2.metric("❌ Tidak Hadir", att.get("tidak_hadir", 0))
+                    col_sum3.metric("📝 Izin", att.get("izin", 0))
+                    col_sum4.metric("🏥 Sakit", att.get("sakit", 0))
+                    
+                    if att.get("overtime", 0) > 0:
+                        st.info(f"⏰ Overtime: {att.get('overtime', 0)} orang")
+                    
+                    st.markdown("---")
+                    st.markdown("**Detail:**")
+                    
+                    records = att.get("records", {})
+                    for worker_id, record in records.items():
+                        status = record.get("status", "Unknown")
+                        if status == "Hadir":
+                            badge = "present-badge"
+                            icon = "✅"
+                        elif status == "Tidak Hadir":
+                            badge = "absent-badge"
+                            icon = "❌"
+                        else:
+                            badge = "overtime-badge"
+                            icon = "📝"
+                        
+                        overtime_text = " ⏰OT" if record.get("overtime", False) else ""
+                        
+                        st.markdown(f"""
+                        <div style="display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #374151;">
+                            <span>{icon} <strong>{record.get('name', 'Unknown')}</strong></span>
+                            <span>{record.get('check_in', '-')} - {record.get('check_out', '-')}{overtime_text}</span>
+                            <span class="{badge}">{status}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+        else:
+            st.info("📝 Belum ada data absensi")
+    
+    with tab3:
+        st.markdown("### 📊 Laporan Kehadiran")
+        
+        if attendance_list:
+            # Date range filter
+            col_rep1, col_rep2 = st.columns(2)
+            with col_rep1:
+                start_date = st.date_input("Dari Tanggal", datetime.date.today() - datetime.timedelta(days=30), key="report_start")
+            with col_rep2:
+                end_date = st.date_input("Sampai Tanggal", datetime.date.today(), key="report_end")
+            
+            # Filter data
+            filtered = [a for a in attendance_list if start_date <= datetime.datetime.strptime(a.get("date", "2000-01-01"), "%Y-%m-%d").date() <= end_date]
+            
+            if filtered:
+                # Summary
+                total_days = len(filtered)
+                avg_hadir = sum(a.get("hadir", 0) for a in filtered) / total_days
+                avg_pct = (avg_hadir / len(workers) * 100) if workers else 0
+                total_overtime = sum(a.get("overtime", 0) for a in filtered)
+                
+                col_rsum1, col_rsum2, col_rsum3, col_rsum4 = st.columns(4)
+                col_rsum1.metric("📅 Total Hari", total_days)
+                col_rsum2.metric("📊 Rata-rata Hadir", f"{avg_hadir:.1f}")
+                col_rsum3.metric("📈 Rata-rata %", f"{avg_pct:.1f}%")
+                col_rsum4.metric("⏰ Total Overtime", total_overtime)
+                
+                st.markdown("---")
+                
+                # Per worker statistics
+                st.markdown("#### 👷 Statistik Per Pekerja")
+                
+                worker_stats = {}
+                for worker in workers:
+                    worker_id = worker.get("id", str(workers.index(worker)))
+                    worker_stats[worker_id] = {
+                        "name": worker.get("name", "Unknown"),
+                        "hadir": 0,
+                        "tidak_hadir": 0,
+                        "izin": 0,
+                        "sakit": 0,
+                        "overtime": 0
+                    }
+                
+                for att in filtered:
+                    records = att.get("records", {})
+                    for worker_id, record in records.items():
+                        if worker_id in worker_stats:
+                            status = record.get("status", "")
+                            if status == "Hadir":
+                                worker_stats[worker_id]["hadir"] += 1
+                            elif status == "Tidak Hadir":
+                                worker_stats[worker_id]["tidak_hadir"] += 1
+                            elif status == "Izin":
+                                worker_stats[worker_id]["izin"] += 1
+                            elif status == "Sakit":
+                                worker_stats[worker_id]["sakit"] += 1
+                            
+                            if record.get("overtime", False):
+                                worker_stats[worker_id]["overtime"] += 1
+                
+                # Display as table
+                stats_data = []
+                for worker_id, stats in worker_stats.items():
+                    pct = (stats["hadir"] / total_days * 100) if total_days > 0 else 0
+                    stats_data.append({
+                        "Nama": stats["name"],
+                        "Hadir": stats["hadir"],
+                        "Tidak Hadir": stats["tidak_hadir"],
+                        "Izin": stats["izin"],
+                        "Sakit": stats["sakit"],
+                        "Overtime": stats["overtime"],
+                        "% Kehadiran": f"{pct:.1f}%"
+                    })
+                
+                stats_df = pd.DataFrame(stats_data)
+                st.dataframe(stats_df, use_container_width=True, hide_index=True)
+                
+                # Export
+                csv_data = stats_df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Download Laporan (CSV)",
+                    data=csv_data,
+                    file_name=f"laporan_absensi_{start_date}_{end_date}.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+            else:
+                st.info("Tidak ada data dalam rentang tanggal tersebut")
+        else:
+            st.info("📝 Belum ada data absensi")
+
+# ===== MENU: DATABASE - WITH WORKERS TAB =====
+elif st.session_state["menu"] == "Database":
+    st.header("💾 DATABASE MANAGEMENT")
+    
+    tab1, tab2, tab3, tab4 = st.tabs(["👥 Buyers", "📦 Products", "🏭 Suppliers", "👷 Pekerja Harian"])
+    
+    # ===== TAB: BUYERS =====
+    with tab1:
+        st.subheader("👥 Manage Buyers")
+        buyers = st.session_state["buyers"]
+        
+        if buyers:
+            for idx, buyer in enumerate(buyers):
+                with st.expander(f"👤 {buyer['name']}"):
+                    st.write(f"**Alamat:** {buyer.get('address', '-')}")
+                    st.write(f"**Contact:** {buyer.get('contact', '-')}")
+                    if st.button("🗑️ Hapus", key=f"del_buyer_{idx}"):
+                        buyers.pop(idx)
+                        st.session_state["buyers"] = buyers
+                        save_buyers(buyers)
+                        st.rerun()
+        
+        st.markdown("---")
+        st.markdown("### ➕ Add New Buyer")
+        with st.form("add_buyer_form", clear_on_submit=True):
+            new_name = st.text_input("Nama Buyer *")
+            new_address = st.text_area("Alamat", height=80)
+            new_contact = st.text_input("Contact")
+            
+            if st.form_submit_button("➕ Add Buyer", use_container_width=True, type="primary"):
+                if new_name:
+                    buyers.append({"name": new_name, "address": new_address, "contact": new_contact, "profile": ""})
+                    st.session_state["buyers"] = buyers
+                    save_buyers(buyers)
+                    st.success(f"✅ Buyer '{new_name}' ditambahkan!")
+                    st.rerun()
+    
+    # ===== TAB: PRODUCTS =====
+    with tab2:
+        st.subheader("📦 Manage Products")
+        products = st.session_state["products"]
+        
+        if products:
+            st.info(f"📦 {len(products)} products in database")
+            for idx, product in enumerate(products):
+                with st.expander(f"📦 {product.get('name', 'N/A')}"):
+                    col_p1, col_p2, col_p3 = st.columns([2, 2, 1])
+                    with col_p1:
+                        st.write(f"**Material:** {product.get('material', '-')}")
+                        st.write(f"**Finishing:** {product.get('finishing', '-')}")
+                        st.write(f"**Product Size:** {product.get('product_size_p', 0)} x {product.get('product_size_l', 0)} x {product.get('product_size_t', 0)} cm")
+                    with col_p2:
+                        st.write(f"**Packing Size:** {product.get('packing_size_p', 0)} x {product.get('packing_size_l', 0)} x {product.get('packing_size_t', 0)} cm")
+                    with col_p3:
+                        image_path = product.get("image_path", "")
+                        if image_path and os.path.exists(image_path):
+                            st.image(image_path, width=100)
+                        if st.button("🗑️ Delete", key=f"del_prod_{idx}"):
+                            products.pop(idx)
+                            st.session_state["products"] = products
+                            save_products(products)
+                            st.rerun()
+        
+        st.markdown("---")
+        st.markdown("### ➕ Add New Product")
+        
+        with st.form("add_product_form", clear_on_submit=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                new_prod_name = st.text_input("Nama Produk *")
+                new_prod_material = st.text_input("Material")
+                new_prod_finishing = st.text_input("Finishing")
+            with col2:
+                st.markdown("**Product Size (cm)**")
+                c1, c2, c3 = st.columns(3)
+                np_p = c1.number_input("P", min_value=0.0,value=None, step=0.1, key="np_p", placeholder="0.00")
+                np_l = c2.number_input("L", min_value=0.0,value=None, step=0.1, key="np_l", placeholder="0.00")
+                np_t = c3.number_input("T", min_value=0.0,value=None, step=0.1, key="np_t", placeholder="0.00")
+                
+                st.markdown("**Packing Size (cm)**")
+                c4, c5, c6 = st.columns(3)
+                npack_p = c4.number_input("P", min_value=0.0,value=None, step=0.1, key="npack_p", placeholder="0.00")
+                npack_l = c5.number_input("L", min_value=0.0,value=None, step=0.1, key="npack_l", placeholder="0.00")
+                npack_t = c6.number_input("T", min_value=0.0,value=None, step=0.1, key="npack_t", placeholder="0.00")
+            
+            new_prod_desc = st.text_area("Description", height=60)
+            new_prod_image = st.file_uploader("Upload Gambar", type=['jpg', 'jpeg', 'png'])
+            
+            if st.form_submit_button("➕ Add Product", use_container_width=True, type="primary"):
+                if new_prod_name:
+                    image_path = ""
+                    if new_prod_image:
+                        image_path = save_product_image(new_prod_image, new_prod_name)
+                    
+                    new_product = {
+                        "name": new_prod_name,
+                        "material": new_prod_material,
+                        "finishing": new_prod_finishing,
+                        "product_size_p": np_p,
+                        "product_size_l": np_l,
+                        "product_size_t": np_t,
+                        "packing_size_p": npack_p,
+                        "packing_size_l": npack_l,
+                        "packing_size_t": npack_t,
+                        "description": new_prod_desc,
+                        "image_path": image_path,
+                        "is_knockdown": False,
+                        "knockdown_pieces": []
+                    }
+                    products.append(new_product)
+                    st.session_state["products"] = products
+                    save_products(products)
+                    st.success(f"✅ Product '{new_prod_name}' ditambahkan!")
+                    st.rerun()
+    
+    # ===== TAB: SUPPLIERS =====
+    with tab3:
+        st.subheader("🏭 Manage Suppliers")
+        suppliers = st.session_state["suppliers"]
+        
+        if suppliers:
+            for idx, supplier in enumerate(suppliers):
+                with st.expander(f"🏭 {supplier.get('name', 'N/A')}"):
+                    st.write(f"**Alamat:** {supplier.get('address', '-')}")
+                    st.write(f"**Spesialisasi:** {supplier.get('specialization', '-')}")
+                    st.write(f"**Contact:** {supplier.get('contact', '-')}")
+                    if st.button("🗑️ Hapus", key=f"del_supp_{idx}"):
+                        suppliers.pop(idx)
+                        st.session_state["suppliers"] = suppliers
+                        save_suppliers(suppliers)
+                        st.rerun()
+        
+        st.markdown("---")
+        st.markdown("### ➕ Add New Supplier")
+        with st.form("add_supplier_form", clear_on_submit=True):
+            new_supp_name = st.text_input("Nama Supplier *")
+            new_supp_address = st.text_area("Alamat", height=80)
+            new_supp_spec = st.text_input("Spesialisasi")
+            new_supp_contact = st.text_input("Contact")
+            
+            if st.form_submit_button("➕ Add Supplier", use_container_width=True, type="primary"):
+                if new_supp_name:
+                    suppliers.append({
+                        "name": new_supp_name,
+                        "address": new_supp_address,
+                        "specialization": new_supp_spec,
+                        "contact": new_supp_contact
+                    })
+                    st.session_state["suppliers"] = suppliers
+                    save_suppliers(suppliers)
+                    st.success(f"✅ Supplier '{new_supp_name}' ditambahkan!")
+                    st.rerun()
+    
+    # ===== TAB: PEKERJA HARIAN - NEW =====
+    with tab4:
+        st.subheader("👷 Manage Pekerja Harian")
+        workers = st.session_state["workers"]
+        
+        if workers:
+            st.info(f"👷 {len(workers)} pekerja terdaftar")
+            
+            for idx, worker in enumerate(workers):
+                with st.expander(f"👤 {worker.get('name', 'N/A')} - {worker.get('position', '-')}"):
+                    col_w1, col_w2, col_w3 = st.columns([2, 2, 1])
+                    with col_w1:
+                        st.write(f"**Nama:** {worker.get('name', '-')}")
+                        st.write(f"**Posisi:** {worker.get('position', '-')}")
+                    with col_w2:
+                        st.write(f"**No. HP:** {worker.get('phone', '-')}")
+                        st.write(f"**Alamat:** {worker.get('address', '-')}")
+                    with col_w3:
+                        if st.button("🗑️ Hapus", key=f"del_worker_{idx}"):
+                            workers.pop(idx)
+                            st.session_state["workers"] = workers
+                            save_workers(workers)
+                            st.success("Pekerja dihapus!")
+                            st.rerun()
+        else:
+            st.info("👷 Belum ada pekerja terdaftar")
+        
+        st.markdown("---")
+        st.markdown("### ➕ Tambah Pekerja Baru")
+        
+        with st.form("add_worker_form", clear_on_submit=True):
+            col_nw1, col_nw2 = st.columns(2)
+            with col_nw1:
+                new_worker_name = st.text_input("Nama Pekerja *", placeholder="Nama lengkap")
+                new_worker_position = st.selectbox("Posisi", [
+                    "Tukang Kayu", "Tukang Finishing", "Helper", "Packing", "QC", "Lainnya"
+                ])
+            with col_nw2:
+                new_worker_phone = st.text_input("No. HP", placeholder="08xxxxxxxxxx")
+                new_worker_address = st.text_input("Alamat", placeholder="Alamat singkat")
+            
+            if st.form_submit_button("➕ Tambah Pekerja", use_container_width=True, type="primary"):
+                if new_worker_name:
+                    # Generate unique ID
+                    worker_id = f"WRK-{len(workers)+1:03d}"
+                    
+                    new_worker = {
+                        "id": worker_id,
+                        "name": new_worker_name,
+                        "position": new_worker_position,
+                        "phone": new_worker_phone,
+                        "address": new_worker_address,
+                        "joined_date": str(datetime.date.today())
+                    }
+                    workers.append(new_worker)
+                    st.session_state["workers"] = workers
+                    if save_workers(workers):
+                        st.success(f"✅ Pekerja '{new_worker_name}' berhasil ditambahkan!")
+                        st.rerun()
+                else:
+                    st.warning("⚠️ Nama pekerja harus diisi!")
+        
+        # Bulk import option
+        st.markdown("---")
+        st.markdown("### 📋 Import Cepat (Bulk)")
+        st.caption("Masukkan nama pekerja, satu per baris")
+        
+        bulk_names = st.text_area("Daftar Nama", placeholder="Budi\nAndi\nSiti\n...", height=100, key="bulk_workers")
+        bulk_position = st.selectbox("Posisi Default", ["Tukang Kayu", "Tukang Finishing", "Helper", "Packing", "QC"], key="bulk_position")
+        
+        if st.button("📤 Import Semua", use_container_width=True):
+            if bulk_names:
+                names = [n.strip() for n in bulk_names.split("\n") if n.strip()]
+                added = 0
+                for name in names:
+                    worker_id = f"WRK-{len(workers)+1:03d}"
+                    workers.append({
+                        "id": worker_id,
+                        "name": name,
+                        "position": bulk_position,
+                        "phone": "",
+                        "address": "",
+                        "joined_date": str(datetime.date.today())
+                    })
+                    added += 1
+                
+                st.session_state["workers"] = workers
+                if save_workers(workers):
+                    st.success(f"✅ {added} pekerja berhasil ditambahkan!")
+                    st.rerun()
+
 # ===== MENU: DAFTAR ORDER =====
 elif st.session_state["menu"] == "Orders":
     st.header("📦 DAFTAR ORDER")
@@ -2383,9 +2664,6 @@ elif st.session_state["menu"] == "Container":
     else:
         st.info("📝 No orders available. Please create orders first in 'Input Pesanan Baru'.")
 
-# Continue with other menus (Orders, Progress, Tracking, etc.) - these remain the same as the original code
-# but with the aligned form fixes for Procurement section...
-
 # ===== MENU: UPDATE PROGRESS =====
 elif st.session_state["menu"] == "Progress":
     st.header("⚙️ UPDATE PROGRESS PRODUKSI")
@@ -2946,12 +3224,14 @@ elif st.session_state["menu"] == "Procurement":
                         st.warning("⚠️ Harap pilih buyer, nama produk, dan tambahkan minimal 1 item!")
         else:
             st.info("📝 Belum ada item yang ditambahkan. Silakan tambah item menggunakan form di atas.")
-# ===== MENU: DATABASE =====
+
+# ===== MENU: DATABASE - ENHANCED WITH PRODUCTS & SUPPLIERS =====
 elif st.session_state["menu"] == "Database":
     st.header("💾 DATABASE MANAGEMENT")
     
-    tab1, tab2 = st.tabs(["👥 Buyers Database", "📦 Products Database"])
+    tab1, tab2, tab3 = st.tabs(["👥 Buyers Database", "📦 Products Database", "🏭 Suppliers Database"])
     
+    ###SAMA SEPERTI CODE SEBELUMNYA UNTUK TAB BUYERS###
     with tab1:
         st.subheader("👥 Manage Buyers")
         
@@ -3076,52 +3356,699 @@ elif st.session_state["menu"] == "Database":
                     else:
                         st.warning("⚠️ Buyer sudah ada")
                 else:
-                    st.warning("⚠️ Nama buyer tidak boleh kosong")
-    
+                    st.warning("⚠️ Nama buyer tidak boleh kosong")    
     with tab2:
-        st.subheader("📦 Manage Products")
+        st.subheader("📦 Manage Products - Enhanced Database")
         
         products = st.session_state["products"]
         
-        st.markdown("### Current Products")
+        if "edit_product_mode" not in st.session_state:
+            st.session_state["edit_product_mode"] = False
+            st.session_state["edit_product_idx"] = None
+        
+        # ===== EDIT MODE - UPDATED FORMAT =====
+        if st.session_state["edit_product_mode"] and st.session_state["edit_product_idx"] is not None:
+            idx = st.session_state["edit_product_idx"]
+            selected_product = products[idx]
+            
+            st.markdown("### ✏️ Edit Product")
+            st.markdown(f"**Editing: {selected_product.get('name', 'N/A')}**")
+            
+            # Product type selection
+            edit_is_knockdown = st.checkbox(
+                "🔧 Produk Knockdown", 
+                value=selected_product.get("is_knockdown", False),
+                key="edit_is_knockdown_check"
+            )
+            
+            st.markdown("---")
+            
+            with st.container():
+                col_e1, col_e2, col_e3 = st.columns([1, 1, 1])
+                
+                with col_e1:
+                    st.markdown("**Product Information**")
+                    edit_name = st.text_input("Nama Produk *", value=selected_product.get("name", ""), key="edit_prod_name")
+                    edit_material = st.text_input("Material", value=selected_product.get("material", ""), key="edit_material")
+                    edit_finishing = st.text_input("Finishing", value=selected_product.get("finishing", ""), key="edit_finishing")
+                    
+                    # Image upload
+                    edit_image_upload = st.file_uploader(
+                        "Upload Gambar Produk", 
+                        type=['jpg', 'jpeg', 'png'], 
+                        key="edit_image_upload"
+                    )
+                    
+                    # Show current image
+                    current_image = selected_product.get("image_path", "")
+                    if current_image and os.path.exists(current_image):
+                        st.image(current_image, caption="Current Image", width=150)
+                        st.caption("↑ Gambar saat ini (bisa override dengan upload baru)")
+                
+                with col_e2:
+                    st.markdown("**Product Size (cm)**")
+                    col_ps1, col_ps2, col_ps3 = st.columns(3)
+                    with col_ps1:
+                        edit_prod_p = st.number_input(
+                            "P", 
+                            min_value=0.0, 
+                            value=float(selected_product.get("product_size_p", 0)),
+                            format="%.2f", 
+                            step=0.01,
+                            key="edit_prod_p"
+                        )
+                    with col_ps2:
+                        edit_prod_l = st.number_input(
+                            "L", 
+                            min_value=0.0, 
+                            value=float(selected_product.get("product_size_l", 0)),
+                            format="%.2f", 
+                            step=0.01,
+                            key="edit_prod_l"
+                        )
+                    with col_ps3:
+                        edit_prod_t = st.number_input(
+                            "T", 
+                            min_value=0.0, 
+                            value=float(selected_product.get("product_size_t", 0)),
+                            format="%.2f", 
+                            step=0.01,
+                            key="edit_prod_t"
+                        )
+                    
+                    # Calculate product CBM
+                    edit_prod_cbm = calculate_cbm(edit_prod_p, edit_prod_l, edit_prod_t)
+                    if edit_prod_cbm > 0:
+                        st.success(f"📦 Product CBM: **{edit_prod_cbm:.6f} m³**")
+                    else:
+                        st.info("📦 Product CBM: 0.000000 m³")
+                
+                with col_e3:
+                    if not edit_is_knockdown:
+                        st.markdown("**Packing Size (cm)**")
+                        col_pack1, col_pack2, col_pack3 = st.columns(3)
+                        with col_pack1:
+                            edit_pack_p = st.number_input(
+                                "P", 
+                                min_value=0.0, 
+                                value=float(selected_product.get("packing_size_p", 0)),
+                                format="%.2f", 
+                                step=0.01,
+                                key="edit_pack_p"
+                            )
+                        with col_pack2:
+                            edit_pack_l = st.number_input(
+                                "L", 
+                                min_value=0.0, 
+                                value=float(selected_product.get("packing_size_l", 0)),
+                                format="%.2f", 
+                                step=0.01,
+                                key="edit_pack_l"
+                            )
+                        with col_pack3:
+                            edit_pack_t = st.number_input(
+                                "T", 
+                                min_value=0.0, 
+                                value=float(selected_product.get("packing_size_t", 0)),
+                                format="%.2f", 
+                                step=0.01,
+                                key="edit_pack_t"
+                            )
+                        
+                        edit_pack_cbm = calculate_cbm(edit_pack_p, edit_pack_l, edit_pack_t)
+                        if edit_pack_cbm > 0:
+                            st.success(f"📦 Packing CBM: **{edit_pack_cbm:.6f} m³**")
+                        else:
+                            st.info("📦 Packing CBM: 0.000000 m³")
+                    else:
+                        st.markdown("**🔧 Knockdown Pieces**")
+                        st.caption("Edit pieces di bawah")
+            
+            edit_description = st.text_area(
+                "Description", 
+                value=selected_product.get("description", ""),
+                height=80,
+                key="edit_description"
+            )
+            
+            # Knockdown pieces management for edit
+            if edit_is_knockdown:
+                if "edit_knockdown_pieces" not in st.session_state:
+                    st.session_state["edit_knockdown_pieces"] = selected_product.get("knockdown_pieces", []).copy()
+                
+                st.markdown("---")
+                st.markdown("### 🔧 Kelola Knockdown Pieces")
+                
+                with st.expander("➕ Tambah Piece Baru", expanded=False):
+                    col_kd1, col_kd2, col_kd3, col_kd4 = st.columns([2, 1, 2, 1])
+                    
+                    with col_kd1:
+                        edit_piece_name = st.text_input("Nama Piece", placeholder="Contoh: Body, Door", key="edit_piece_name")
+                    
+                    with col_kd2:
+                        edit_piece_qty = st.number_input("Qty per Set", min_value=1, value=1, key="edit_piece_qty")
+                    
+                    with col_kd3:
+                        st.caption("**Packing Size (cm)**")
+                        col_kd_p1, col_kd_p2, col_kd_p3 = st.columns(3)
+                        with col_kd_p1:
+                            edit_piece_p = st.number_input("P", min_value=0.0, value=0.0, format="%.2f", key="edit_piece_p", step=0.01)
+                        with col_kd_p2:
+                            edit_piece_l = st.number_input("L", min_value=0.0, value=0.0, format="%.2f", key="edit_piece_l", step=0.01)
+                        with col_kd_p3:
+                            edit_piece_t = st.number_input("T", min_value=0.0, value=0.0, format="%.2f", key="edit_piece_t", step=0.01)
+                    
+                    with col_kd4:
+                        edit_piece_cbm = calculate_cbm(edit_piece_p, edit_piece_l, edit_piece_t) * edit_piece_qty
+                        st.metric("CBM", f"{edit_piece_cbm:.6f}")
+                        
+                        if st.button("➕ Add", use_container_width=True, type="primary", key="edit_add_piece_btn"):
+                            if edit_piece_name and edit_piece_cbm > 0:
+                                new_piece = {
+                                    "name": edit_piece_name,
+                                    "qty_per_set": edit_piece_qty,
+                                    "p": edit_piece_p,
+                                    "l": edit_piece_l,
+                                    "t": edit_piece_t,
+                                    "cbm": edit_piece_cbm
+                                }
+                                st.session_state["edit_knockdown_pieces"].append(new_piece)
+                                st.success(f"✅ Piece '{edit_piece_name}' ditambahkan!")
+                                st.rerun()
+                            else:
+                                st.warning("⚠️ Nama dan dimensi harus diisi!")
+                
+                # Display pieces
+                if st.session_state["edit_knockdown_pieces"]:
+                    st.markdown("#### 📋 Pieces dalam Produk")
+                    
+                    for piece_idx, piece in enumerate(st.session_state["edit_knockdown_pieces"]):
+                        st.markdown(f"""
+                        <div class="knockdown-piece">
+                            <span class="piece-badge">Piece {piece_idx + 1}</span>
+                            <strong style="margin-left: 10px; color: #60A5FA;">{piece['name']}</strong>
+                            <span style="color: #9CA3AF; margin-left: 10px;">x{piece['qty_per_set']} pcs</span>
+                            <br>
+                            <small style="color: #D1D5DB;">
+                                Size: {piece['p']:.2f} × {piece['l']:.2f} × {piece['t']:.2f} cm | 
+                                CBM: {piece['cbm']:.6f} m³
+                            </small>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        col_piece1, col_piece2 = st.columns([4, 1])
+                        with col_piece2:
+                            if st.button("🗑️ Hapus", key=f"edit_remove_piece_{piece_idx}", use_container_width=True):
+                                st.session_state["edit_knockdown_pieces"].pop(piece_idx)
+                                st.rerun()
+            
+            st.markdown("---")
+            
+            # Action buttons
+            col_btn1, col_btn2 = st.columns(2)
+            
+            with col_btn1:
+                if st.button("💾 Simpan Perubahan", use_container_width=True, type="primary", key="edit_submit_product"):
+                    if edit_name:
+                        # Handle image
+                        final_image_path = selected_product.get("image_path", "")
+                        if edit_image_upload:
+                            final_image_path = save_product_image(edit_image_upload, edit_name)
+                        
+                        # Get knockdown pieces
+                        final_knockdown_pieces = []
+                        if edit_is_knockdown:
+                            final_knockdown_pieces = st.session_state.get("edit_knockdown_pieces", [])
+                        
+                        # Update product
+                        products[idx] = {
+                            "name": edit_name,
+                            "material": edit_material,
+                            "finishing": edit_finishing,
+                            "product_size_p": edit_prod_p,
+                            "product_size_l": edit_prod_l,
+                            "product_size_t": edit_prod_t,
+                            "packing_size_p": edit_pack_p if not edit_is_knockdown else 0.0,
+                            "packing_size_l": edit_pack_l if not edit_is_knockdown else 0.0,
+                            "packing_size_t": edit_pack_t if not edit_is_knockdown else 0.0,
+                            "is_knockdown": edit_is_knockdown,
+                            "knockdown_pieces": final_knockdown_pieces,
+                            "image_path": final_image_path,
+                            "description": edit_description
+                        }
+                        
+                        st.session_state["products"] = products
+                        if save_products(products):
+                            st.success(f"✅ Product '{edit_name}' berhasil diupdate!")
+                            st.session_state["edit_product_mode"] = False
+                            st.session_state["edit_product_idx"] = None
+                            if "edit_knockdown_pieces" in st.session_state:
+                                del st.session_state["edit_knockdown_pieces"]
+                            st.rerun()
+                    else:
+                        st.warning("⚠️ Nama produk tidak boleh kosong")
+            
+            with col_btn2:
+                if st.button("❌ Batal", use_container_width=True, type="secondary", key="edit_cancel_product"):
+                    st.session_state["edit_product_mode"] = False
+                    st.session_state["edit_product_idx"] = None
+                    if "edit_knockdown_pieces" in st.session_state:
+                        del st.session_state["edit_knockdown_pieces"]
+                    st.rerun()
+            
+            st.markdown("---")
+        
+        # ===== PRODUCT LIST =====
+        st.markdown("### Current Products Database")
         if products:
-            product_df = pd.DataFrame({"Product Name": products})
-            st.dataframe(product_df, use_container_width=True, hide_index=True)
+            st.info(f"📦 {len(products)} products in database")
+            
+            for idx, product in enumerate(products):
+                knockdown_badge = " 🔧" if product.get('is_knockdown', False) else ""
+                with st.expander(
+                    f"📦 {product.get('name', 'N/A')}{knockdown_badge}",
+                    expanded=False
+                ):
+                    col_p1, col_p2, col_p3 = st.columns([2, 2, 1])
+                    
+                    with col_p1:
+                        st.write(f"**Material:** {product.get('material', '-')}")
+                        st.write(f"**Finishing:** {product.get('finishing', '-')}")
+                        
+                        # Display sizes
+                        prod_p = product.get('product_size_p', 0)
+                        prod_l = product.get('product_size_l', 0)
+                        prod_t = product.get('product_size_t', 0)
+                        st.write(f"**Product Size:** {prod_p:.2f} x {prod_l:.2f} x {prod_t:.2f} cm")
+                        
+                        prod_cbm = calculate_cbm(prod_p, prod_l, prod_t)
+                        st.write(f"**Product CBM:** {prod_cbm:.6f} m³")
+                    
+                    with col_p2:
+                        if not product.get("is_knockdown", False):
+                            pack_p = product.get('packing_size_p', 0)
+                            pack_l = product.get('packing_size_l', 0)
+                            pack_t = product.get('packing_size_t', 0)
+                            st.write(f"**Packing Size:** {pack_p:.2f} x {pack_l:.2f} x {pack_t:.2f} cm")
+                            
+                            pack_cbm = calculate_cbm(pack_p, pack_l, pack_t)
+                            st.write(f"**Packing CBM:** {pack_cbm:.6f} m³")
+                        else:
+                            pieces = product.get("knockdown_pieces", [])
+                            st.write(f"**Type:** Knockdown")
+                            st.write(f"**Pieces:** {len(pieces)} parts")
+                            
+                            if pieces:
+                                total_cbm = sum([p.get("cbm", 0) for p in pieces])
+                                st.write(f"**Total CBM per Set:** {total_cbm:.6f} m³")
+                        
+                        desc = product.get('description', '-')
+                        st.write(f"**Description:** {desc[:50]}..." if len(desc) > 50 else f"**Description:** {desc}")
+                    
+                    with col_p3:
+                        image_path = product.get("image_path", "")
+                        if image_path and os.path.exists(image_path):
+                            st.image(image_path, width=100)
+                        else:
+                            st.info("No image")
+                        
+                        if st.button("✏️ Edit", key=f"edit_prod_{idx}", use_container_width=True):
+                            st.session_state["edit_product_mode"] = True
+                            st.session_state["edit_product_idx"] = idx
+                            st.rerun()
+                        
+                        if st.button("🗑️ Delete", key=f"del_prod_{idx}", use_container_width=True, type="secondary"):
+                            if st.session_state.get(f"confirm_del_prod_{idx}", False):
+                                product_name = products[idx].get("name", "")
+                                products.pop(idx)
+                                st.session_state["products"] = products
+                                if save_products(products):
+                                    st.success(f"✅ Product '{product_name}' deleted!")
+                                    del st.session_state[f"confirm_del_prod_{idx}"]
+                                    st.rerun()
+                            else:
+                                st.session_state[f"confirm_del_prod_{idx}"] = True
+                                st.warning("⚠️ Click again to confirm!")
+                                st.rerun()
+                    
+                    # Show knockdown pieces if applicable
+                    if product.get("is_knockdown", False):
+                        pieces = product.get("knockdown_pieces", [])
+                        if pieces:
+                            st.markdown("---")
+                            st.markdown("**🔧 Knockdown Pieces:**")
+                            for piece_idx, piece in enumerate(pieces):
+                                st.markdown(f"""
+                                <div style="background: #1F2937; padding: 8px; margin: 4px 0; border-radius: 4px; border-left: 3px solid #3B82F6;">
+                                    <strong>{piece_idx + 1}. {piece['name']}</strong> (x{piece['qty_per_set']}) - 
+                                    {piece['p']:.2f} × {piece['l']:.2f} × {piece['t']:.2f} cm = {piece['cbm']:.6f} m³
+                                </div>
+                                """, unsafe_allow_html=True)
         else:
             st.info("Belum ada produk yang terdaftar")
         
         st.markdown("---")
         
+        # ===== ADD NEW PRODUCT - UPDATED FORMAT =====
         st.markdown("### ➕ Add New Product")
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            new_product = st.text_input("", placeholder="Masukkan nama produk baru", label_visibility="collapsed", key="new_product_input")
-        with col2:
-            if st.button("➕ Add", use_container_width=True, type="primary", key="add_product_btn"):
-                if new_product and new_product not in products:
-                    products.append(new_product)
-                    st.session_state["products"] = products
-                    if save_products(products):
-                        st.success(f"✅ Produk '{new_product}' berhasil ditambahkan!")
-                        st.rerun()
-                elif new_product in products:
-                    st.warning("⚠️ Produk sudah ada")
+        
+        if "new_product_knockdown_pieces" not in st.session_state:
+            st.session_state["new_product_knockdown_pieces"] = []
+        
+        # Product type selection
+        new_is_knockdown = st.checkbox(
+            "🔧 Produk Knockdown", 
+            key="new_is_knockdown_check",
+            help="Centang jika produk terdiri dari beberapa piece"
+        )
+        
+        st.markdown("---")
+        
+        with st.container():
+            col1, col2, col3 = st.columns([1, 1, 1])
+            
+            with col1:
+                st.markdown("**Product Information**")
+                new_name = st.text_input("Nama Produk *", placeholder="Dining Table Oslo", key="new_prod_name")
+                new_material = st.text_input("Material", placeholder="Mahogany Solid", key="new_material")
+                new_finishing = st.text_input("Finishing", placeholder="NC Dark Walnut - Matte", key="new_finishing")
+                
+                new_image_upload = st.file_uploader(
+                    "Upload Gambar Produk", 
+                    type=['jpg', 'jpeg', 'png'], 
+                    key="new_image_upload"
+                )
+            
+            with col2:
+                st.markdown("**Product Size (cm)**")
+                col_ps1, col_ps2, col_ps3 = st.columns(3)
+                with col_ps1:
+                    new_prod_p = st.number_input("P", min_value=0.0, value=None, format="%.2f", step=0.01, key="new_prod_p", placeholder="0.00")
+                with col_ps2:
+                    new_prod_l = st.number_input("L", min_value=0.0, value=None, format="%.2f", step=0.01, key="new_prod_l", placeholder="0.00")
+                with col_ps3:
+                    new_prod_t = st.number_input("T", min_value=0.0, value=None, format="%.2f", step=0.01, key="new_prod_t", placeholder="0.00")
+                
+                new_prod_cbm = calculate_cbm(new_prod_p, new_prod_l, new_prod_t) if new_prod_p else 0
+                if new_prod_cbm > 0:
+                    st.success(f"📦 Product CBM: **{new_prod_cbm:.6f} m³**")
+                else:
+                    st.info("📦 Product CBM: 0.000000 m³")
+            
+            with col3:
+                if not new_is_knockdown:
+                    st.markdown("**Packing Size (cm)**")
+                    col_pack1, col_pack2, col_pack3 = st.columns(3)
+                    with col_pack1:
+                        new_pack_p = st.number_input("P", min_value=0.0, value=None, format="%.2f", step=0.01, key="new_pack_p", placeholder="0.00")
+                    with col_pack2:
+                        new_pack_l = st.number_input("L", min_value=0.0, value=None, format="%.2f", step=0.01, key="new_pack_l", placeholder="0.00")
+                    with col_pack3:
+                        new_pack_t = st.number_input("T", min_value=0.0, value=None, format="%.2f", step=0.01, key="new_pack_t", placeholder="0.00")
+                    
+                    new_pack_cbm = calculate_cbm(new_pack_p, new_pack_l, new_pack_t) if new_pack_p else 0
+                    if new_pack_cbm > 0:
+                        st.success(f"📦 Packing CBM: **{new_pack_cbm:.6f} m³**")
+                    else:
+                        st.info("📦 Packing CBM: 0.000000 m³")
+                else:
+                    st.markdown("**🔧 Knockdown Pieces**")
+                    st.caption("Tambahkan pieces di bawah")
+                    
+                    if st.session_state["new_product_knockdown_pieces"]:
+                        total_cbm_set = sum([p["cbm"] for p in st.session_state["new_product_knockdown_pieces"]])
+                        st.success(f"📦 CBM per Set: **{total_cbm_set:.6f} m³**")
+                        st.caption(f"✓ {len(st.session_state['new_product_knockdown_pieces'])} pieces")
+                    else:
+                        st.warning("⚠️ Belum ada piece")
+        
+        new_description = st.text_area("Description", placeholder="Deskripsi produk...", height=80, key="new_description")
+        
+        # Knockdown pieces management
+        if new_is_knockdown:
+            st.markdown("---")
+            st.markdown("### 🔧 Kelola Knockdown Pieces")
+            
+            with st.expander("➕ Tambah Piece Baru", expanded=True):
+                col_kd1, col_kd2, col_kd3, col_kd4 = st.columns([2, 1, 2, 1])
+                
+                with col_kd1:
+                    new_piece_name = st.text_input("Nama Piece", placeholder="Body, Door, Shelf", key="new_piece_name")
+                
+                with col_kd2:
+                    new_piece_qty = st.number_input("Qty per Set", min_value=1, value=1, key="new_piece_qty")
+                
+                with col_kd3:
+                    st.caption("**Packing Size (cm)**")
+                    col_kd_p1, col_kd_p2, col_kd_p3 = st.columns(3)
+                    with col_kd_p1:
+                        new_piece_p = st.number_input("P", min_value=0.0, value=0.0, format="%.2f", key="new_piece_p", step=0.01)
+                    with col_kd_p2:
+                        new_piece_l = st.number_input("L", min_value=0.0, value=0.0, format="%.2f", key="new_piece_l", step=0.01)
+                    with col_kd_p3:
+                        new_piece_t = st.number_input("T", min_value=0.0, value=0.0, format="%.2f", key="new_piece_t", step=0.01)
+                
+                with col_kd4:
+                    new_piece_cbm = calculate_cbm(new_piece_p, new_piece_l, new_piece_t) * new_piece_qty
+                    st.metric("CBM", f"{new_piece_cbm:.6f}")
+                    
+                    if st.button("➕ Add", use_container_width=True, type="primary", key="new_add_piece_btn"):
+                        if new_piece_name and new_piece_cbm > 0:
+                            new_piece = {
+                                "name": new_piece_name,
+                                "qty_per_set": new_piece_qty,
+                                "p": new_piece_p,
+                                "l": new_piece_l,
+                                "t": new_piece_t,
+                                "cbm": new_piece_cbm
+                            }
+                            st.session_state["new_product_knockdown_pieces"].append(new_piece)
+                            st.success(f"✅ Piece '{new_piece_name}' ditambahkan!")
+                            st.rerun()
+                        else:
+                            st.warning("⚠️ Nama dan dimensi harus diisi!")
+            
+            # Display pieces
+            if st.session_state["new_product_knockdown_pieces"]:
+                st.markdown("#### 📋 Pieces dalam Produk")
+                
+                for piece_idx, piece in enumerate(st.session_state["new_product_knockdown_pieces"]):
+                    st.markdown(f"""
+                    <div class="knockdown-piece">
+                        <span class="piece-badge">Piece {piece_idx + 1}</span>
+                        <strong style="margin-left: 10px; color: #60A5FA;">{piece['name']}</strong>
+                        <span style="color: #9CA3AF; margin-left: 10px;">x{piece['qty_per_set']} pcs</span>
+                        <br>
+                        <small style="color: #D1D5DB;">
+                            Size: {piece['p']:.2f} × {piece['l']:.2f} × {piece['t']:.2f} cm | 
+                            CBM: {piece['cbm']:.6f} m³
+                        </small>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    col_piece1, col_piece2 = st.columns([4, 1])
+                    with col_piece2:
+                        if st.button("🗑️ Hapus", key=f"new_remove_piece_{piece_idx}", use_container_width=True):
+                            st.session_state["new_product_knockdown_pieces"].pop(piece_idx)
+                            st.rerun()
+        
+        st.markdown("---")
+        
+        # Submit button
+        col_submit1, col_submit2 = st.columns(2)
+        
+        with col_submit1:
+            if st.button("➕ Tambah Product", use_container_width=True, type="primary", key="new_submit_product"):
+                if new_name:
+                    # Check duplicate
+                    existing_names = [p.get("name", "") for p in products]
+                    if new_name in existing_names:
+                        st.warning("⚠️ Produk sudah ada")
+                    else:
+                        # Validate knockdown
+                        if new_is_knockdown and not st.session_state["new_product_knockdown_pieces"]:
+                            st.warning("⚠️ Produk knockdown harus memiliki minimal 1 piece!")
+                        else:
+                            # Save image
+                            final_image_path = ""
+                            if new_image_upload:
+                                final_image_path = save_product_image(new_image_upload, new_name)
+                            
+                            # Create product data
+                            new_product_data = {
+                                "name": new_name,
+                                "material": new_material,
+                                "finishing": new_finishing,
+                                "product_size_p": new_prod_p if new_prod_p else 0.0,
+                                "product_size_l": new_prod_l if new_prod_l else 0.0,
+                                "product_size_t": new_prod_t if new_prod_t else 0.0,
+                                "packing_size_p": new_pack_p if not new_is_knockdown and new_pack_p else 0.0,
+                                "packing_size_l": new_pack_l if not new_is_knockdown and new_pack_l else 0.0,
+                                "packing_size_t": new_pack_t if not new_is_knockdown and new_pack_t else 0.0,
+                                "is_knockdown": new_is_knockdown,
+                                "knockdown_pieces": st.session_state["new_product_knockdown_pieces"].copy() if new_is_knockdown else [],
+                                "image_path": final_image_path,
+                                "description": new_description
+                            }
+                            
+                            products.append(new_product_data)
+                            st.session_state["products"] = products
+                            
+                            if save_products(products):
+                                st.success(f"✅ Product '{new_name}' berhasil ditambahkan!")
+                                st.session_state["new_product_knockdown_pieces"] = []
+                                st.balloons()
+                                st.rerun()
                 else:
                     st.warning("⚠️ Nama produk tidak boleh kosong")
         
-        st.markdown("---")
-        st.markdown("### 🗑️ Delete Product")
-        if products:
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                product_to_delete = st.selectbox("", products, label_visibility="collapsed", key="delete_product_select")
-            with col2:
-                if st.button("🗑️ Delete", use_container_width=True, type="secondary", key="delete_product_btn"):
-                    products.remove(product_to_delete)
-                    st.session_state["products"] = products
-                    if save_products(products):
-                        st.success(f"✅ Produk '{product_to_delete}' berhasil dihapus!")
+        with col_submit2:
+            if st.button("🗑️ Clear Form", use_container_width=True, type="secondary", key="new_clear_product"):
+                st.session_state["new_product_knockdown_pieces"] = []
+                st.rerun()
+    with tab3:
+        st.subheader("🏭 Manage Suppliers")
+        
+        suppliers = st.session_state["suppliers"]
+        
+        if "edit_supplier_mode" not in st.session_state:
+            st.session_state["edit_supplier_mode"] = False
+            st.session_state["edit_supplier_idx"] = None
+        
+        # EDIT MODE
+        if st.session_state["edit_supplier_mode"] and st.session_state["edit_supplier_idx"] is not None:
+            idx = st.session_state["edit_supplier_idx"]
+            selected_supplier = suppliers[idx]
+            
+            st.markdown("### ✏️ Edit Supplier")
+            with st.form("edit_supplier_form"):
+                st.markdown(f"**Editing: {selected_supplier.get('name', 'N/A')}**")
+                col1, col2 = st.columns(2)
+                with col1:
+                    edit_name = st.text_input("Nama Supplier *", value=selected_supplier.get("name", ""))
+                    edit_address = st.text_area("Alamat Supplier", value=selected_supplier.get("address", ""), height=100)
+                with col2:
+                    edit_specialization = st.text_area(
+                        "Spesialisasi", 
+                        value=selected_supplier.get("specialization", ""),
+                        height=100,
+                        help="Contoh: Meja kayu, lemari knockdown"
+                    )
+                    edit_contact = st.text_input("Contact", value=selected_supplier.get("contact", ""))
+                
+                col_btn1, col_btn2, col_btn3 = st.columns(3)
+                with col_btn1:
+                    update_supplier = st.form_submit_button("💾 Update", use_container_width=True, type="primary")
+                with col_btn2:
+                    delete_supplier = st.form_submit_button("🗑️ Delete", use_container_width=True, type="secondary")
+                with col_btn3:
+                    cancel_edit = st.form_submit_button("❌ Cancel", use_container_width=True)
+                
+                if update_supplier:
+                    if edit_name:
+                        suppliers[idx] = {
+                            "name": edit_name,
+                            "address": edit_address,
+                            "specialization": edit_specialization,
+                            "contact": edit_contact
+                        }
+                        st.session_state["suppliers"] = suppliers
+                        if save_suppliers(suppliers):
+                            st.success(f"✅ Supplier '{edit_name}' berhasil diupdate!")
+                            st.session_state["edit_supplier_mode"] = False
+                            st.session_state["edit_supplier_idx"] = None
+                            st.rerun()
+                    else:
+                        st.warning("⚠️ Nama supplier tidak boleh kosong")
+                
+                if delete_supplier:
+                    supplier_name = suppliers[idx].get("name", "")
+                    suppliers.pop(idx)
+                    st.session_state["suppliers"] = suppliers
+                    if save_suppliers(suppliers):
+                        st.success(f"✅ Supplier '{supplier_name}' berhasil dihapus!")
+                        st.session_state["edit_supplier_mode"] = False
+                        st.session_state["edit_supplier_idx"] = None
                         st.rerun()
+                
+                if cancel_edit:
+                    st.session_state["edit_supplier_mode"] = False
+                    st.session_state["edit_supplier_idx"] = None
+                    st.rerun()
+            
+            st.markdown("---")
+        
+        # SUPPLIER LIST
+        st.markdown("### Current Suppliers Database")
+        if suppliers:
+            st.info(f"🏭 {len(suppliers)} suppliers in database")
+            
+            header_cols = st.columns([2, 2.5, 2.5, 1.5, 0.8])
+            header_cols[0].markdown("**Nama Supplier**")
+            header_cols[1].markdown("**Alamat**")
+            header_cols[2].markdown("**Spesialisasi**")
+            header_cols[3].markdown("**Contact**")
+            header_cols[4].markdown("**Action**")
+            
+            for idx, supplier in enumerate(suppliers):
+                row_cols = st.columns([2, 2.5, 2.5, 1.5, 0.8])
+                row_cols[0].write(supplier.get("name", "-"))
+                row_cols[1].write(supplier.get("address", "-")[:40] + "..." if len(supplier.get("address", "")) > 40 else supplier.get("address", "-"))
+                row_cols[2].write(supplier.get("specialization", "-")[:40] + "..." if len(supplier.get("specialization", "")) > 40 else supplier.get("specialization", "-"))
+                row_cols[3].write(supplier.get("contact", "-"))
+                
+                with row_cols[4]:
+                    if st.button("✏️", key=f"edit_supp_{idx}", use_container_width=True):
+                        st.session_state["edit_supplier_mode"] = True
+                        st.session_state["edit_supplier_idx"] = idx
+                        st.rerun()
+                
+                st.markdown("<div style='margin: 5px 0; border-bottom: 1px solid #374151;'></div>", unsafe_allow_html=True)
+        else:
+            st.info("Belum ada supplier yang terdaftar")
+        
+        st.markdown("---")
+        
+        # ADD NEW SUPPLIER
+        st.markdown("### ➕ Add New Supplier")
+        with st.form("add_supplier_form", clear_on_submit=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                new_supplier_name = st.text_input("Nama Supplier *", placeholder="UD Jaya Makmur")
+                new_supplier_address = st.text_area(
+                    "Alamat Supplier", 
+                    placeholder="Jl. Kenanga No. 45, Jepara",
+                    height=100
+                )
+            with col2:
+                new_supplier_specialization = st.text_area(
+                    "Spesialisasi", 
+                    placeholder="Meja kayu, lemari knockdown, material mahogany",
+                    height=100
+                )
+                new_supplier_contact = st.text_input("Contact", placeholder="Budi / +62812345678")
+            
+            submit_supplier = st.form_submit_button("➕ Add Supplier", use_container_width=True, type="primary")
+            
+            if submit_supplier:
+                if new_supplier_name:
+                    existing_names = [s.get("name", "") for s in suppliers]
+                    if new_supplier_name not in existing_names:
+                        new_supplier_data = {
+                            "name": new_supplier_name,
+                            "address": new_supplier_address,
+                            "specialization": new_supplier_specialization,
+                            "contact": new_supplier_contact
+                        }
+                        suppliers.append(new_supplier_data)
+                        st.session_state["suppliers"] = suppliers
+                        if save_suppliers(suppliers):
+                            st.success(f"✅ Supplier '{new_supplier_name}' berhasil ditambahkan!")
+                            st.rerun()
+                    else:
+                        st.warning("⚠️ Supplier sudah ada")
+                else:
+                    st.warning("⚠️ Nama supplier tidak boleh kosong")
 
 # ===== MENU: ANALYTICS =====
 elif st.session_state["menu"] == "Analytics":
@@ -3304,8 +4231,8 @@ elif st.session_state["menu"] == "Gantt":
             st.warning("Tidak ada data sesuai filter")
     else:
         st.info("📝 Belum ada data untuk membuat Gantt Chart.")
-# Add remaining menus (Orders, Tracking, Database, Analytics, Gantt) with same code as original
 
+###SAMA SEPERTI CODE SEBELUMNYA UNTUK MENU LAINNYA: Dashboard, Orders, Progress, Tracking, Container, Procurement, Analytics, Gantt, Frozen###
 # ===== MENU: FROZEN ZONE =====
 elif st.session_state["menu"] == "Frozen":
     st.header("❄️ FROZEN ZONE - ORDER LOCK MANAGEMENT")
@@ -3490,6 +4417,6 @@ elif st.session_state["menu"] == "Frozen":
                     mime="text/csv",
                     use_container_width=True
                 )
-                
+ 
 st.markdown("---")
-st.caption(f"© 2025 PPIC-DSS System | Enhanced with Multiple Container Types & Production Categories | v11.0")
+st.caption(f"© 2025 PPIC-DSS System | Enhanced Database Management v12.0")
