@@ -96,11 +96,11 @@ def check_permission(required_role):
         return required_role in ["Progress","Tracking"]
     
     # Procurement bisa akses Database, Input, dan Procurement
-    elif user_role == "procurement":
+    elif user_role == "admin":
         return required_role in ["Database", "Input", "Procurement"]
     
     # Admin bisa akses semua
-    elif user_role == "admin":
+    elif user_role == "procurement":
         return True
     
     return False
