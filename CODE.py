@@ -2420,18 +2420,27 @@ elif st.session_state["menu"] == "Progress":
             if df_filtered.empty:
                 st.warning("⚠️ Tidak ada order yang sesuai dengan pilihan Anda.")
             else:
-
-                 for idx, order_data in df_filtered.iterrows():
-                        order_id = order_data["Order ID"]
-                        is_frozen = order_data.get("Is Frozen", False)
-                        
-                        if is_frozen:
-                            st.error(f"🔒 **Order {order_id} is FROZEN!**")
-                            st.warning(f"⚠️ This order has been locked by Owner and cannot be modified.")
-                            st.info(f"**Frozen Reason:** {order_data.get('Frozen Reason', 'No reason provided')}")
-                            st.info(f"**Frozen By:** {order_data.get('Frozen By', 'Owner')} on {order_data.get('Frozen At', 'N/A')}")
-                            st.markdown("---")
-                            continue  # Skip this order
+                stage_to_progress = {
+                    "Pre Order": 0, "Order di Supplier": 10, "Warehouse": 20,
+                    "Fitting 1": 30, "Amplas": 40, "Revisi 1": 50,
+                    "Spray": 60, "Fitting 2": 70, "Revisi Fitting 2": 80,
+                    "Packaging": 90, "Pengiriman": 100
+                }
+                stages_list = get_tracking_stages()
+            
+                for order_idx_in_filtered, (idx, order_data) in enumerate(df_filtered.iterrows()):
+                    order_id = order_data["Order ID"]
+                    
+                    # CHECK IF FROZEN - TAMBAHKAN INI
+                    is_frozen = order_data.get("Is Frozen", False)
+                    
+                    if is_frozen:
+                        st.error(f"🔒 **Order {order_id} is FROZEN!**")
+                        st.warning(f"⚠️ This order has been locked by Owner and cannot be modified.")
+                        st.info(f"**Frozen Reason:** {order_data.get('Frozen Reason', 'No reason provided')}")
+                        st.info(f"**Frozen By:** {order_data.get('Frozen By', 'Owner')} on {order_data.get('Frozen At', 'N/A')}")
+                        st.markdown("---")
+                        continue  # Skip this frozen order
                             
                 stage_to_progress = {
                     "Pre Order": 0, "Order di Supplier": 10, "Warehouse": 20,
