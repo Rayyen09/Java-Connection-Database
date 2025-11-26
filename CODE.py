@@ -89,18 +89,18 @@ def check_permission(required_role):
     
     # Owner: Hanya Dashboard
     if user_role == "owner":
-        return required_role in ["Dashboard"]
+        return required_role in ["Dashboard","Orders","Tracking","Container","Database","Analytics","Gantt"]
     
     # Mandor: Hanya Progress
     elif user_role == "mandor":
-        return required_role in ["Progress"]
+        return required_role in ["Progress","Tracking"]
     
     # Procurement: Database, Input, Procurement
-    elif user_role == "procurement":
-        return required_role in ["Database", "Input", "Procurement"]
+    elif user_role == "admin":
+        return required_role in ["Dashboard","Database","Input","Procurement"]
     
     # Admin: Semua menu
-    elif user_role == "admin":
+    elif user_role == "procurement":
         return True
     
     return False
