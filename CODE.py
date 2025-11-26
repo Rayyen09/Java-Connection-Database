@@ -89,11 +89,11 @@ def check_permission(required_role):
     
     # Owner hanya bisa akses Dashboard
     if user_role == "owner":
-        return required_role in ["Dashboard"]
+        return required_role in ["Dashboard","Tracking","Analytics","Gantt"]
     
     # Mandor hanya bisa akses Progress
     elif user_role == "mandor":
-        return required_role in ["Progress"]
+        return required_role in ["Progress","Tracking"]
     
     # Procurement bisa akses Database, Input, dan Procurement
     elif user_role == "procurement":
