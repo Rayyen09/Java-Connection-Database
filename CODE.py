@@ -722,7 +722,8 @@ menu_options = {
     "🚢 Container Loading": "Container",
     "💾 Database": "Database",
     "📈 Analisis & Laporan": "Analytics",
-    "📊 Gantt Chart": "Gantt"
+    "📊 Gantt Chart": "Gantt",
+    "❄️ Frozen Zone": "Frozen"
 }
 
 for label, value in menu_options.items():
@@ -2419,6 +2420,19 @@ elif st.session_state["menu"] == "Progress":
             if df_filtered.empty:
                 st.warning("⚠️ Tidak ada order yang sesuai dengan pilihan Anda.")
             else:
+
+                 for idx, order_data in df_filtered.iterrows():
+                        order_id = order_data["Order ID"]
+                        is_frozen = order_data.get("Is Frozen", False)
+                        
+                        if is_frozen:
+                            st.error(f"🔒 **Order {order_id} is FROZEN!**")
+                            st.warning(f"⚠️ This order has been locked by Owner and cannot be modified.")
+                            st.info(f"**Frozen Reason:** {order_data.get('Frozen Reason', 'No reason provided')}")
+                            st.info(f"**Frozen By:** {order_data.get('Frozen By', 'Owner')} on {order_data.get('Frozen At', 'N/A')}")
+                            st.markdown("---")
+                            continue  # Skip this order
+                            
                 stage_to_progress = {
                     "Pre Order": 0, "Order di Supplier": 10, "Warehouse": 20,
                     "Fitting 1": 30, "Amplas": 40, "Revisi 1": 50,
@@ -3283,6 +3297,190 @@ elif st.session_state["menu"] == "Gantt":
         st.info("📝 Belum ada data untuk membuat Gantt Chart.")
 # Add remaining menus (Orders, Tracking, Database, Analytics, Gantt) with same code as original
 
-
+# ===== MENU: FROZEN ZONE =====
+elif st.session_state["menu"] == "Frozen":
+    st.header("❄️ FROZEN ZONE - ORDER LOCK MANAGEMENT")
+    st.caption("🔒 Area khusus Owner untuk mengunci order dari perubahan")
+    
+    df = st.session_state["data_produksi"]
+    
+    if df.empty:
+        st.info("📝 Belum ada order yang tersedia")
+    else:
+        # Initialize frozen status column if not exists
+        if "Is Frozen" not in df.columns:
+            df["Is Frozen"] = False
+            st.session_state["data_produksi"] = df
+        
+        st.markdown("---")
+        
+        tab1, tab2 = st.tabs(["🔓 Manage Freeze Status", "📊 Frozen Orders Report"])
+        
+        with tab1:
+            st.markdown("### 🔒 Freeze/Unfreeze Orders")
+            st.info("💡 **Frozen orders** tidak bisa diubah oleh user lain sampai di-unfreeze oleh Owner")
+            
+            # Filter
+            col_f1, col_f2, col_f3 = st.columns(3)
+            with col_f1:
+                filter_buyer_frozen = st.multiselect("Filter Buyer", df["Buyer"].unique().tolist(), key="frozen_buyer")
+            with col_f2:
+                filter_status = st.selectbox("Status", ["All", "Frozen", "Not Frozen"], key="frozen_status")
+            with col_f3:
+                search_frozen = st.text_input("🔍 Search Order ID", key="frozen_search")
+            
+            # Apply filters
+            df_frozen = df.copy()
+            if filter_buyer_frozen:
+                df_frozen = df_frozen[df_frozen["Buyer"].isin(filter_buyer_frozen)]
+            if filter_status == "Frozen":
+                df_frozen = df_frozen[df_frozen["Is Frozen"] == True]
+            elif filter_status == "Not Frozen":
+                df_frozen = df_frozen[df_frozen["Is Frozen"] == False]
+            if search_frozen:
+                df_frozen = df_frozen[df_frozen["Order ID"].str.contains(search_frozen, case=False, na=False)]
+            
+            st.markdown(f"📦 Showing {len(df_frozen)} orders")
+            st.markdown("---")
+            
+            # Display orders
+            for idx, row in df_frozen.iterrows():
+                is_frozen = row.get("Is Frozen", False)
+                
+                # Card styling
+                if is_frozen:
+                    card_style = "background: #1E3A8A; border: 2px solid #3B82F6; border-radius: 8px; padding: 15px; margin: 10px 0;"
+                    status_badge = "🔒 <span style='background: #3B82F6; color: white; padding: 4px 12px; border-radius: 12px; font-weight: bold;'>FROZEN</span>"
+                else:
+                    card_style = "background: #1F2937; border: 1px solid #374151; border-radius: 8px; padding: 15px; margin: 10px 0;"
+                    status_badge = "🔓 <span style='background: #6B7280; color: white; padding: 4px 12px; border-radius: 12px;'>Not Frozen</span>"
+                
+                st.markdown(f"<div style='{card_style}'>", unsafe_allow_html=True)
+                
+                col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
+                
+                with col1:
+                    st.markdown(f"**{row['Order ID']}**")
+                    st.caption(f"{row['Buyer']} | {row['Produk']}")
+                
+                with col2:
+                    st.caption(f"Qty: {row['Qty']} pcs")
+                    st.caption(f"Progress: {row['Progress']}")
+                
+                with col3:
+                    st.caption(f"Due: {row['Due Date']}")
+                    st.caption(f"Priority: {row['Prioritas']}")
+                
+                with col4:
+                    st.markdown(status_badge, unsafe_allow_html=True)
+                
+                st.markdown("</div>", unsafe_allow_html=True)
+                
+                # Action buttons
+                col_btn1, col_btn2, col_btn3 = st.columns([2, 1, 1])
+                
+                with col_btn1:
+                    freeze_reason = st.text_input(
+                        "Reason (optional)", 
+                        placeholder="Why freeze/unfreeze this order?",
+                        key=f"reason_{idx}"
+                    )
+                
+                with col_btn2:
+                    if is_frozen:
+                        if st.button("🔓 Unfreeze", key=f"unfreeze_{idx}", use_container_width=True, type="secondary"):
+                            df.at[idx, "Is Frozen"] = False
+                            df.at[idx, "Frozen Reason"] = ""
+                            df.at[idx, "Frozen At"] = ""
+                            df.at[idx, "Frozen By"] = ""
+                            
+                            # Add history
+                            try:
+                                history = json.loads(row["History"]) if row["History"] else []
+                            except:
+                                history = []
+                            
+                            history.append(add_history_entry(
+                                row['Order ID'], 
+                                "Order Unfrozen", 
+                                f"Unfrozen by Owner. Reason: {freeze_reason if freeze_reason else 'No reason provided'}"
+                            ))
+                            df.at[idx, "History"] = json.dumps(history)
+                            
+                            st.session_state["data_produksi"] = df
+                            if save_data(df):
+                                st.success(f"✅ {row['Order ID']} unfrozen!")
+                                st.rerun()
+                    else:
+                        if st.button("🔒 Freeze", key=f"freeze_{idx}", use_container_width=True, type="primary"):
+                            df.at[idx, "Is Frozen"] = True
+                            df.at[idx, "Frozen Reason"] = freeze_reason if freeze_reason else "Locked by Owner"
+                            df.at[idx, "Frozen At"] = str(datetime.datetime.now())
+                            df.at[idx, "Frozen By"] = st.session_state.get("user_name", "Owner")
+                            
+                            # Add history
+                            try:
+                                history = json.loads(row["History"]) if row["History"] else []
+                            except:
+                                history = []
+                            
+                            history.append(add_history_entry(
+                                row['Order ID'], 
+                                "Order Frozen", 
+                                f"Frozen by Owner. Reason: {freeze_reason if freeze_reason else 'No reason provided'}"
+                            ))
+                            df.at[idx, "History"] = json.dumps(history)
+                            
+                            st.session_state["data_produksi"] = df
+                            if save_data(df):
+                                st.success(f"✅ {row['Order ID']} frozen!")
+                                st.rerun()
+                
+                with col_btn3:
+                    with st.expander("ℹ️ Info"):
+                        if is_frozen:
+                            st.caption(f"**Frozen By:** {row.get('Frozen By', 'Owner')}")
+                            st.caption(f"**Frozen At:** {row.get('Frozen At', '-')}")
+                            st.caption(f"**Reason:** {row.get('Frozen Reason', '-')}")
+                        else:
+                            st.caption("Not frozen")
+                
+                st.markdown("---")
+        
+        with tab2:
+            st.markdown("### 📊 Frozen Orders Report")
+            
+            frozen_df = df[df["Is Frozen"] == True]
+            
+            if frozen_df.empty:
+                st.info("📝 Tidak ada order yang di-freeze saat ini")
+            else:
+                st.success(f"🔒 **{len(frozen_df)}** orders currently frozen")
+                
+                # Summary metrics
+                col_sum1, col_sum2, col_sum3, col_sum4 = st.columns(4)
+                col_sum1.metric("Frozen Orders", len(frozen_df))
+                col_sum2.metric("Total Qty", f"{frozen_df['Qty'].sum():,} pcs")
+                col_sum3.metric("Buyers Affected", frozen_df["Buyer"].nunique())
+                col_sum4.metric("Avg Progress", f"{frozen_df['Progress'].str.rstrip('%').astype('float').mean():.1f}%")
+                
+                st.markdown("---")
+                
+                # Detailed table
+                display_cols = ["Order ID", "Buyer", "Produk", "Qty", "Progress", "Due Date", "Frozen By", "Frozen At", "Frozen Reason"]
+                frozen_display = frozen_df[display_cols].copy()
+                
+                st.dataframe(frozen_display, use_container_width=True, hide_index=True)
+                
+                # Export
+                csv_frozen = frozen_display.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Download Frozen Orders Report",
+                    data=csv_frozen,
+                    file_name=f"frozen_orders_{datetime.date.today()}.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+                
 st.markdown("---")
 st.caption(f"© 2025 PPIC-DSS System | Enhanced with Multiple Container Types & Production Categories | v11.0")
