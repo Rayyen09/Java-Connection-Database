@@ -729,8 +729,6 @@ for label, value in menu_options.items():
     if check_permission(value):
         if st.sidebar.button(label, use_container_width=True):
             st.session_state["menu"] = value
-    else:
-        st.sidebar.button(label, use_container_width=True, disabled=True, help="Anda tidak memiliki akses ke menu ini")
 
 st.sidebar.markdown("---")
 
