@@ -6,6 +6,7 @@ import os
 import plotly.express as px
 import plotly.figure_factory as ff
 from streamlit.components.v1 import html
+import hashlib
 
 # ===== KONFIGURASI DATABASE =====
 DATABASE_PATH = "ppic_data.json"
@@ -13,6 +14,7 @@ BUYER_DB_PATH = "buyers.json"
 PRODUCT_DB_PATH = "products.json"
 PROCUREMENT_DB_PATH = "procurement.json"
 CONTAINER_DB_PATH = "containers.json"
+USERS_DB_PATH = "users.json"
 
 st.set_page_config(
     page_title="PPIC-DSS System", 
@@ -20,6 +22,216 @@ st.set_page_config(
     page_icon="🏭",
     initial_sidebar_state="collapsed"
 )
+
+# ===== USER AUTHENTICATION SYSTEM =====
+def hash_password(password):
+    """Hash password menggunakan SHA256"""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def load_users():
+    """Load users dari database"""
+    if os.path.exists(USERS_DB_PATH):
+        try:
+            with open(USERS_DB_PATH, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    
+    # Default users jika file tidak ada
+    default_users = {
+        "owner": {
+            "password": hash_password("owner123"),
+            "role": "owner",
+            "name": "Owner"
+        },
+        "mandor": {
+            "password": hash_password("mandor123"),
+            "role": "mandor",
+            "name": "Mandor Operasional"
+        },
+        "procurement": {
+            "password": hash_password("procurement123"),
+            "role": "procurement",
+            "name": "Admin Procurement"
+        },
+        "admin": {
+            "password": hash_password("admin123"),
+            "role": "admin",
+            "name": "Admin"
+        }
+    }
+    save_users(default_users)
+    return default_users
+
+def save_users(users_data):
+    """Save users ke database"""
+    try:
+        with open(USERS_DB_PATH, 'w', encoding='utf-8') as f:
+            json.dump(users_data, f, ensure_ascii=False, indent=2)
+        return True
+    except:
+        return False
+
+def authenticate(username, password):
+    """Authenticate user"""
+    users = load_users()
+    if username in users:
+        if users[username]["password"] == hash_password(password):
+            return True, users[username]["role"], users[username]["name"]
+    return False, None, None
+
+def check_permission(required_role):
+    """Check if current user has permission to access a menu"""
+    if "user_role" not in st.session_state:
+        return False
+    
+    user_role = st.session_state["user_role"]
+    
+    # Owner hanya bisa akses Dashboard
+    if user_role == "owner":
+        return required_role in ["Dashboard"]
+    
+    # Mandor hanya bisa akses Progress
+    elif user_role == "mandor":
+        return required_role in ["Progress"]
+    
+    # Procurement bisa akses Database, Input, dan Procurement
+    elif user_role == "procurement":
+        return required_role in ["Database", "Input", "Procurement"]
+    
+    # Admin bisa akses semua
+    elif user_role == "admin":
+        return True
+    
+    return False
+
+def get_role_display_name(role):
+    """Get display name for role"""
+    role_names = {
+        "owner": "👔 Owner",
+        "mandor": "⚙️ Mandor Operasional",
+        "procurement": "🛒 Admin Procurement",
+        "admin": "👨‍💼 Administrator"
+    }
+    return role_names.get(role, role)
+
+# ===== LOGIN PAGE =====
+def show_login_page():
+    st.markdown("""
+    <style>
+    .login-container {
+        max-width: 500px;
+        margin: 100px auto;
+        padding: 40px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 15px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+    }
+    
+    .login-title {
+        color: white;
+        text-align: center;
+        font-size: 2.5rem;
+        margin-bottom: 10px;
+        font-weight: bold;
+    }
+    
+    .login-subtitle {
+        color: #E0E7FF;
+        text-align: center;
+        font-size: 1.1rem;
+        margin-bottom: 30px;
+    }
+    
+    .stTextInput input {
+        background-color: rgba(255, 255, 255, 0.9);
+        border-radius: 8px;
+        padding: 12px;
+        font-size: 1rem;
+    }
+    
+    .stButton button {
+        background: white;
+        color: #667eea;
+        font-weight: bold;
+        font-size: 1.1rem;
+        padding: 12px;
+        border-radius: 8px;
+        border: none;
+        width: 100%;
+        margin-top: 10px;
+    }
+    
+    .stButton button:hover {
+        background: #F3F4F6;
+        color: #5568D3;
+    }
+    
+    .default-credentials {
+        background: rgba(255, 255, 255, 0.1);
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 20px;
+        color: white;
+        font-size: 0.9rem;
+    }
+    
+    .default-credentials h4 {
+        color: white;
+        margin-bottom: 10px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.markdown('<div class="login-container">', unsafe_allow_html=True)
+        st.markdown('<h1 class="login-title">🏭 PPIC-DSS</h1>', unsafe_allow_html=True)
+        st.markdown('<p class="login-subtitle">Production Planning & Inventory Control</p>', unsafe_allow_html=True)
+        
+        with st.form("login_form"):
+            username = st.text_input("👤 Username", placeholder="Masukkan username")
+            password = st.text_input("🔒 Password", type="password", placeholder="Masukkan password")
+            
+            submit = st.form_submit_button("🚀 LOGIN", use_container_width=True)
+            
+            if submit:
+                if username and password:
+                    success, role, name = authenticate(username, password)
+                    
+                    if success:
+                        st.session_state["logged_in"] = True
+                        st.session_state["username"] = username
+                        st.session_state["user_role"] = role
+                        st.session_state["user_name"] = name
+                        st.session_state["menu"] = "Dashboard"
+                        st.success(f"✅ Login berhasil! Selamat datang, {name}")
+                        st.rerun()
+                    else:
+                        st.error("❌ Username atau password salah!")
+                else:
+                    st.warning("⚠️ Harap isi username dan password!")
+        
+        # Default credentials info
+        st.markdown("""
+        <div class="default-credentials">
+            <h4>🔑 Default Login Credentials:</h4>
+            <strong>Owner:</strong> owner / owner123<br>
+            <strong>Mandor:</strong> mandor / mandor123<br>
+            <strong>Procurement:</strong> procurement / procurement123<br>
+            <strong>Admin:</strong> admin / admin123
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+
+# ===== LOGOUT FUNCTION =====
+def logout():
+    """Logout user dan clear session"""
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.rerun()
 
 # ===== CONTAINER SPECIFICATIONS =====
 CONTAINER_TYPES = {
@@ -166,6 +378,17 @@ def inject_responsive_css():
         font-size: 0.85em;
         font-weight: bold;
     }
+    
+    /* User info badge */
+    .user-info-badge {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 8px 15px;
+        border-radius: 20px;
+        font-size: 0.9rem;
+        display: inline-block;
+        margin: 5px 0;
+    }
     </style>
     
     <script>
@@ -189,7 +412,7 @@ def inject_responsive_css():
 
 inject_responsive_css()
 
-# ===== FUNGSI DATABASE =====
+# ===== FUNGSI DATABASE (sama seperti sebelumnya) =====
 def load_data():
     if os.path.exists(DATABASE_PATH):
         try:
@@ -203,7 +426,6 @@ def load_data():
                         df['History'] = df.apply(lambda x: json.dumps([]), axis=1)
                     if 'Product CBM' not in df.columns:
                         df['Product CBM'] = 0.0
-                    # TAMBAHKAN 2 BARIS INI:
                     if 'Is Knockdown' not in df.columns:
                         df['Is Knockdown'] = False
                     if 'Knockdown Pieces' not in df.columns:
@@ -218,7 +440,7 @@ def load_data():
         "Product Size P", "Product Size L", "Product Size T", "Product CBM",
         "Packing Size P", "Packing Size L", "Packing Size T",
         "CBM per Pcs", "Total CBM", "Image Path", 
-        "Is Knockdown", "Knockdown Pieces"  # TAMBAHKAN 2 KOLOM INI
+        "Is Knockdown", "Knockdown Pieces"
     ])
 
 def save_data(df):
@@ -279,7 +501,6 @@ def load_procurement():
         try:
             with open(PROCUREMENT_DB_PATH, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                # Fix: Ensure it returns a list, not dict
                 if isinstance(data, dict):
                     return []
                 return data
@@ -295,7 +516,6 @@ def save_procurement(procurement_data):
     except:
         return False
 
-# ===== CONTAINER DATABASE =====
 def load_containers():
     if os.path.exists(CONTAINER_DB_PATH):
         try:
@@ -368,7 +588,6 @@ def calculate_cbm(p, l, t):
         l_val = float(l) if l else 0
         t_val = float(t) if t else 0
         if p_val > 0 and l_val > 0 and t_val > 0:
-            # Return with 6 decimal places precision
             return (p_val * l_val * t_val) / 1000000
         return 0
     except:
@@ -397,7 +616,6 @@ def calculate_production_metrics(df):
         try:
             tracking_data = json.loads(row["Tracking"])
             
-            # TAMBAHKAN BAGIAN INI - Handle knockdown products
             if row.get("Is Knockdown", False):
                 try:
                     knockdown_pieces = json.loads(row.get("Knockdown Pieces", "[]"))
@@ -406,25 +624,33 @@ def calculate_production_metrics(df):
                     total_cbm_per_unit = float(row.get("Total CBM", 0)) / max(row.get("Qty", 1), 1)
             else:
                 total_cbm_per_unit = float(row.get("CBM per Pcs", 0))
-            # AKHIR TAMBAHAN
             
             for stage, data in tracking_data.items():
                 qty = data.get("qty", 0)
                 if stage in wip_stages and qty > 0:
                     wip_qty += qty
-                    wip_cbm += qty * total_cbm_per_unit  # UBAH dari product_cbm ke total_cbm_per_unit
+                    wip_cbm += qty * total_cbm_per_unit
                 elif stage == "Packaging" and qty > 0:
                     finished_qty += qty
-                    finished_cbm += qty * total_cbm_per_unit  # UBAH
+                    finished_cbm += qty * total_cbm_per_unit
                 elif stage == "Pengiriman" and qty > 0:
                     shipping_qty += qty
-                    shipping_cbm += qty * total_cbm_per_unit  # UBAH
+                    shipping_cbm += qty * total_cbm_per_unit
         except:
             pass
     
     return wip_qty, wip_cbm, finished_qty, finished_cbm, shipping_qty, shipping_cbm
 
-# ===== INISIALISASI =====
+# ===== CHECK LOGIN STATUS =====
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+
+# Jika belum login, tampilkan halaman login
+if not st.session_state["logged_in"]:
+    show_login_page()
+    st.stop()
+
+# ===== INISIALISASI SETELAH LOGIN =====
 if "data_produksi" not in st.session_state:
     st.session_state["data_produksi"] = load_data()
 if "buyers" not in st.session_state:
@@ -437,23 +663,31 @@ if "containers" not in st.session_state:
     st.session_state["containers"] = load_containers()
 if "menu" not in st.session_state:
     st.session_state["menu"] = "Dashboard"
-
-# Initialize container cart
 if "container_cart" not in st.session_state:
     st.session_state["container_cart"] = []
-
-# Initialize selected container type
 if "selected_container_type" not in st.session_state:
     st.session_state["selected_container_type"] = "40 HC (High Cube)"
-
-# Initialize knockdown pieces for input form
 if "knockdown_pieces" not in st.session_state:
     st.session_state["knockdown_pieces"] = []
 
-# ===== SIDEBAR MENU =====
+# ===== SIDEBAR MENU WITH PERMISSION CHECKS =====
 st.sidebar.title("🏭 PPIC-DSS MENU")
+
+# Display user info
+user_name = st.session_state.get("user_name", "User")
+user_role = st.session_state.get("user_role", "")
+role_display = get_role_display_name(user_role)
+
+st.sidebar.markdown(f"""
+<div class="user-info-badge">
+    {role_display}<br>
+    <small>{user_name}</small>
+</div>
+""", unsafe_allow_html=True)
+
 st.sidebar.markdown("---")
 
+# Menu options dengan permission check
 menu_options = {
     "📊 Dashboard": "Dashboard",
     "📋 Input Pesanan Baru": "Input",
@@ -468,10 +702,18 @@ menu_options = {
 }
 
 for label, value in menu_options.items():
-    if st.sidebar.button(label, use_container_width=True):
-        st.session_state["menu"] = value
+    if check_permission(value):
+        if st.sidebar.button(label, use_container_width=True):
+            st.session_state["menu"] = value
+    else:
+        st.sidebar.button(label, use_container_width=True, disabled=True, help="Anda tidak memiliki akses ke menu ini")
 
 st.sidebar.markdown("---")
+
+# Logout button
+if st.sidebar.button("🚪 Logout", use_container_width=True, type="secondary"):
+    logout()
+
 st.sidebar.info(f"📁 Database: Local Storage")
 
 # ===== BACK BUTTON =====
@@ -481,6 +723,12 @@ if st.session_state["menu"] != "Dashboard":
         st.rerun()
     st.markdown("---")
 
+# ===== PERMISSION CHECK FOR CURRENT MENU =====
+current_menu = st.session_state.get("menu", "Dashboard")
+if not check_permission(current_menu):
+    st.error("🚫 Anda tidak memiliki akses ke menu ini!")
+    st.info("Silakan pilih menu yang tersedia di sidebar.")
+    st.stop()
 
 # ===== MENU: DASHBOARD =====
 if st.session_state["menu"] == "Dashboard":
