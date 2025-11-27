@@ -2588,7 +2588,6 @@ elif st.session_state["menu"] == "Database":
                         save_suppliers(suppliers)
                         st.rerun()
         
-        st.markdown("---")
         st.markdown("### ➕ Add New Supplier")
         with st.form("add_supplier_form", clear_on_submit=True):
             new_supp_name = st.text_input("Nama Supplier *",placeholder="")
