@@ -416,9 +416,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-apply_dynamic_theme()
-inject_responsive_css()
-
 # ===== USER AUTHENTICATION SYSTEM =====
 def hash_password(password):
     """Hash password menggunakan SHA256"""
@@ -885,7 +882,6 @@ def get_metric_style(label, value, unit=""):
     </div>
     """
 
-inject_responsive_css()
 # ===== FUNGSI DATABASE - ENHANCED PRODUCTS =====
 def load_data():
     if os.path.exists(DATABASE_PATH):
@@ -1463,6 +1459,9 @@ def save_suppliers(suppliers):
     except:
         return False
 
+# ===== APPLY THEME AND CSS =====
+apply_dynamic_theme()  # ✅ Dipindahkan ke sini
+inject_responsive_css()  # ✅ Dipindahkan ke sini
 
 # ===== INITIALIZATION =====
 if "logged_in" not in st.session_state:
