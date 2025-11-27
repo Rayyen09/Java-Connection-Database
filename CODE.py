@@ -1108,12 +1108,12 @@ menu_options = {
     "🛒 Procurement": "Procurement",
     "⚙️ Update Progress": "Progress",
     "🔍 Tracking Produksi": "Tracking",
+    "❄️ Frozen Zone": "Frozen",
     "🚢 Container Loading": "Container",
-    "💾 Database": "Database",
+    "📝 Absensi": "Absensi",  # NEW
     "📈 Analisis & Laporan": "Analytics",
     "📊 Gantt Chart": "Gantt",
-    "📝 Absensi": "Absensi",  # NEW
-    "❄️ Frozen Zone": "Frozen"
+    "💾 Database": "Database"
 }
 
 for label, value in menu_options.items():
