@@ -46,22 +46,22 @@ def load_users():
     # Default users
     default_users = {
         "owner": {
-            "password": hash_password("owner12345"),
+            "password": hash_password("owner123"),
             "role": "owner",
             "name": "Owner"
         },
         "mandor": {
-            "password": hash_password("mandor12345"),
+            "password": hash_password("mandor123"),
             "role": "mandor",
             "name": "Mandor Operasional"
         },
         "procurement": {
-            "password": hash_password("procurement12345"),
+            "password": hash_password("procurement123"),
             "role": "procurement",
             "name": "Admin Procurement"
         },
         "admin": {
-            "password": hash_password("admin12345"),
+            "password": hash_password("admin123"),
             "role": "admin",
             "name": "Admin"
         }
