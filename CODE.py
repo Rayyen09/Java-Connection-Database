@@ -46,22 +46,22 @@ def load_users():
     # Default users
     default_users = {
         "owner": {
-            "password": hash_password("owner123"),
+            "password": hash_password("owner123#"),
             "role": "owner",
             "name": "Owner"
         },
         "mandor": {
-            "password": hash_password("mandor123"),
+            "password": hash_password("mandor123#"),
             "role": "mandor",
             "name": "Mandor Operasional"
         },
         "procurement": {
-            "password": hash_password("procurement123"),
+            "password": hash_password("procurement123#"),
             "role": "procurement",
             "name": "Admin Procurement"
         },
         "admin": {
-            "password": hash_password("admin123"),
+            "password": hash_password("admin123#"),
             "role": "admin",
             "name": "Admin"
         }
@@ -287,17 +287,6 @@ def show_login_page():
                         st.error("❌ Username atau password salah")
                 else:
                     st.warning("⚠️ Harap isi username dan password")
-        
-        # Credentials info
-        st.markdown("""
-        <div class="credentials-box">
-            <h4>🔑 Default Login Credentials</h4>
-            <div><strong>Owner:</strong> owner / owner123</div>
-            <div><strong>Mandor:</strong> mandor / mandor123</div>
-            <div><strong>Procurement:</strong> procurement / procurement123</div>
-            <div><strong>Admin:</strong> admin / admin123</div>
-        </div>
-        """, unsafe_allow_html=True)
         
         st.markdown('</div>', unsafe_allow_html=True)
 
