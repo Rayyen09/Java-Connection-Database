@@ -96,7 +96,7 @@ def check_permission(required_role):
     
     # Owner: Hanya Dashboard
     if user_role == "owner":
-        return required_role in ["Dashboard","Orders","Tracking","Container","Database","Analytics","Gantt"]
+        return required_role in ["Dashboard","Orders","Tracking","Frozen","Container","Database","Analytics","Gantt"]
     
     # Mandor: Hanya Progress
     elif user_role == "mandor":
