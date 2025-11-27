@@ -841,6 +841,163 @@ def calculate_production_metrics(df):
     
     return wip_qty, wip_cbm, finished_qty, finished_cbm, shipping_qty, shipping_cbm
 
+# ===== OVERTIME CALCULATION FUNCTIONS - NEW =====
+def calculate_overtime_hours(check_in_time, check_out_time):
+    """Calculate overtime hours from check-out time"""
+    try:
+        if isinstance(check_out_time, str):
+            checkout = datetime.datetime.strptime(check_out_time, "%H:%M").time()
+        else:
+            checkout = check_out_time
+        
+        # Regular end time is 16:00
+        regular_end = datetime.time(16, 0)
+        
+        # Convert to datetime for calculation
+        checkout_dt = datetime.datetime.combine(datetime.date.today(), checkout)
+        regular_end_dt = datetime.datetime.combine(datetime.date.today(), regular_end)
+        
+        # Calculate overtime
+        if checkout_dt > regular_end_dt:
+            overtime_delta = checkout_dt - regular_end_dt
+            overtime_hours = overtime_delta.total_seconds() / 3600
+            return overtime_hours
+        return 0.0
+    except:
+        return 0.0
+
+def calculate_overtime_cost(overtime_hours, hourly_rate=10840):
+    """Calculate overtime cost based on labor law"""
+    if overtime_hours <= 0:
+        return 0
+    
+    # First hour: 1.5x
+    # Next hours: 2.0x
+    if overtime_hours <= 1:
+        cost = overtime_hours * hourly_rate * 1.5
+    else:
+        first_hour_cost = 1 * hourly_rate * 1.5
+        remaining_hours = overtime_hours - 1
+        remaining_cost = remaining_hours * hourly_rate * 2.0
+        cost = first_hour_cost + remaining_cost
+    
+    return cost
+
+def get_working_days_in_month(year, month):
+    """Calculate working days (Monday-Saturday) in a month"""
+    import calendar
+    
+    num_days = calendar.monthrange(year, month)[1]
+    working_days = 0
+    
+    for day in range(1, num_days + 1):
+        date = datetime.date(year, month, day)
+        # 0=Monday, 6=Sunday
+        if date.weekday() != 6:  # Exclude Sunday
+            working_days += 1
+    
+    return working_days
+
+def calculate_monthly_overtime_metrics(attendance_list, year, month):
+    """Calculate overtime metrics for a specific month"""
+    monthly_attendance = [
+        att for att in attendance_list
+        if att.get("date", "").startswith(f"{year}-{month:02d}")
+    ]
+    
+    if not monthly_attendance:
+        return {
+            "total_overtime_hours": 0,
+            "total_workers": 0,
+            "workers_with_overtime": 0,
+            "avg_overtime_rate": 0,
+            "total_overtime_cost": 0,
+            "regular_cost": 0,
+            "cost_increase_pct": 0,
+            "top_overtime_workers": []
+        }
+    
+    working_days = get_working_days_in_month(year, month)
+    regular_hours_per_worker = working_days * 7  # 7 hours per day
+    
+    worker_overtime = {}  # {worker_id: {hours, cost, rate}}
+    total_regular_cost = 0
+    total_overtime_cost = 0
+    
+    for att in monthly_attendance:
+        records = att.get("records", {})
+        for worker_id, record in records.items():
+            if record.get("status") == "Hadir":
+                check_in = record.get("check_in", "08:00")
+                check_out = record.get("check_out", "16:00")
+                
+                ot_hours = calculate_overtime_hours(check_in, check_out)
+                
+                if worker_id not in worker_overtime:
+                    worker_overtime[worker_id] = {
+                        "name": record.get("name", "Unknown"),
+                        "hours": 0,
+                        "cost": 0,
+                        "rate": 0
+                    }
+                
+                worker_overtime[worker_id]["hours"] += ot_hours
+                
+                if ot_hours > 0:
+                    ot_cost = calculate_overtime_cost(ot_hours)
+                    worker_overtime[worker_id]["cost"] += ot_cost
+                    total_overtime_cost += ot_cost
+                
+                # Assume regular daily wage of Rp 79,000 (from Excel)
+                total_regular_cost += 79000
+    
+    # Calculate rates per worker
+    workers_with_ot = 0
+    for worker_id, data in worker_overtime.items():
+        if data["hours"] > 0:
+            data["rate"] = (data["hours"] / regular_hours_per_worker) * 100
+            workers_with_ot += 1
+        else:
+            data["rate"] = 0
+    
+    # Average overtime rate
+    if worker_overtime:
+        avg_rate = sum([w["rate"] for w in worker_overtime.values()]) / len(worker_overtime)
+    else:
+        avg_rate = 0
+    
+    # Cost increase percentage
+    if total_regular_cost > 0:
+        cost_increase_pct = (total_overtime_cost / total_regular_cost) * 100
+    else:
+        cost_increase_pct = 0
+    
+    # Top 3 overtime workers
+    top_workers = sorted(
+        worker_overtime.items(),
+        key=lambda x: x[1]["hours"],
+        reverse=True
+    )[:3]
+    
+    return {
+        "total_overtime_hours": sum([w["hours"] for w in worker_overtime.values()]),
+        "total_workers": len(worker_overtime),
+        "workers_with_overtime": workers_with_ot,
+        "avg_overtime_rate": avg_rate,
+        "total_overtime_cost": total_overtime_cost,
+        "regular_cost": total_regular_cost,
+        "cost_increase_pct": cost_increase_pct,
+        "top_overtime_workers": [
+            {
+                "name": worker_overtime[wid]["name"],
+                "hours": worker_overtime[wid]["hours"],
+                "rate": worker_overtime[wid]["rate"],
+                "cost": worker_overtime[wid]["cost"]
+            }
+            for wid, _ in top_workers
+        ]
+    }
+
 # ===== FUNGSI DATABASE - SUPPLIERS =====
 def load_suppliers():
     """Load supplier database"""
@@ -961,112 +1118,225 @@ if st.session_state["menu"] == "Dashboard":
     if not df.empty:
         df['Tracking Status'] = df.apply(lambda row: get_tracking_status_from_progress(row['Progress']), axis=1)
         
-        # Calculate metrics
-        wip_qty, wip_cbm, finished_qty, finished_cbm, shipping_qty, shipping_cbm = calculate_production_metrics(df)
-        
-        # Calculate storage usage
-        storage_used_m2 = calculate_storage_usage(df)
-        storage_percentage = (storage_used_m2 / TOTAL_STORAGE_AREA_M2) * 100
-        storage_available = TOTAL_STORAGE_AREA_M2 - storage_used_m2
-        
         # ===== TOP METRICS ROW =====
         st.markdown("### 📈 Key Metrics")
         col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-        
+
         total_orders = len(df)
         ongoing = len(df[df["Tracking Status"] == "On Going"])
         done = len(df[df["Tracking Status"] == "Done"])
         total_qty = df["Qty"].sum()
-        
+
         col_m1.metric("📦 Total Orders", total_orders)
         col_m2.metric("🔄 On Going", ongoing)
         col_m3.metric("✅ Done", done)
         col_m4.metric("📊 Total Qty", f"{total_qty:,}")
-        
+
         st.markdown("---")
-        
-        # ===== STORAGE USAGE SECTION - NEW =====
-        st.markdown("### 🏭 Storage Usage")
-        
-        col_storage1, col_storage2 = st.columns([2, 1])
-        
-        with col_storage1:
-            # Storage progress bar
-            if storage_percentage > 90:
-                bar_color = "#EF4444"  # Red
-                status_text = "⚠️ CRITICAL"
-            elif storage_percentage > 70:
-                bar_color = "#F59E0B"  # Yellow
-                status_text = "⚡ HIGH"
+
+        # ===== PRODUCTION OVERVIEW =====
+        st.markdown("### 📦 Production Overview")
+
+        # Calculate all metrics
+        wip_qty, wip_cbm, finished_qty, finished_cbm, shipping_qty, shipping_cbm = calculate_production_metrics(df)
+        storage_used_m2 = calculate_storage_usage(df)
+        storage_percentage = (storage_used_m2 / TOTAL_STORAGE_AREA_M2) * 100
+        storage_available = TOTAL_STORAGE_AREA_M2 - storage_used_m2
+
+        # Calculate floor areas
+        wip_floor = 0
+        finished_floor = 0
+        wip_stages = ["Warehouse", "Fitting 1", "Amplas", "Revisi 1", "Spray", "Fitting 2", "Revisi Fitting 2"]
+
+        for idx, row in df.iterrows():
+            try:
+                tracking_data = json.loads(row["Tracking"])
+                prod_p = float(row.get("Product Size P", 0))
+                prod_l = float(row.get("Product Size L", 0))
+                area_per_unit = calculate_floor_area_m2(prod_p, prod_l)
+                
+                for stage in wip_stages:
+                    qty_in_stage = tracking_data.get(stage, {}).get("qty", 0)
+                    if qty_in_stage > 0:
+                        wip_floor += qty_in_stage * area_per_unit
+                
+                qty_packaging = tracking_data.get("Packaging", {}).get("qty", 0)
+                if qty_packaging > 0:
+                    finished_floor += qty_packaging * area_per_unit
+            except:
+                pass
+
+        # Determine storage status color
+        if storage_percentage > 90:
+            bar_color = "#EF4444"
+            status_text = "CRITICAL"
+            status_icon = "⚠️"
+        elif storage_percentage > 70:
+            bar_color = "#F59E0B"
+            status_text = "HIGH"
+            status_icon = "⚡"
+        else:
+            bar_color = "#3B82F6"
+            status_text = "NORMAL"
+            status_icon = "✅"
+
+        # ROW 1: 3 Cards
+        col1, col2, col3 = st.columns([2, 1, 1])
+
+        with col1:
+            st.markdown(
+                f'<div style="background: #1e293b; padding: 22px; border-radius: 12px; border-left: 4px solid {bar_color}; box-shadow: 0 2px 8px rgba(0,0,0,0.3); height: 230px; overflow: hidden;">'
+                f'<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">'
+                f'<h3 style="color: white; margin: 0; font-size: 1em; white-space: nowrap;">📦 Storage Capacity</h3>'
+                f'<span style="background: {bar_color}; color: white; padding: 5px 12px; border-radius: 16px; font-size: 0.75em; font-weight: bold; white-space: nowrap;">{status_icon} {status_text}</span>'
+                f'</div>'
+                f'<div style="background: #0f172a; height: 38px; border-radius: 19px; overflow: hidden; margin: 14px 0;">'
+                f'<div style="width: {min(storage_percentage, 100):.1f}%; height: 100%; background: {bar_color}; display: flex; align-items: center; justify-content: center; transition: width 0.5s ease;">'
+                f'<span style="color: white; font-weight: bold; font-size: 1em;">{storage_percentage:.1f}%</span>'
+                f'</div></div>'
+                f'<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px;">'
+                f'<div style="background: rgba(59, 130, 246, 0.15); padding: 11px; border-radius: 8px; border-left: 3px solid #3B82F6; text-align: center;">'
+                f'<p style="margin: 0; color: #93c5fd; font-size: 0.75em; font-weight: 500;">Used</p>'
+                f'<p style="margin: 4px 0 0 0; color: white; font-weight: bold; font-size: 1.15em;">{storage_used_m2:.1f}</p>'
+                f'<p style="margin: 2px 0 0 0; color: #60a5fa; font-size: 0.7em;">m²</p>'
+                f'</div>'
+                f'<div style="background: rgba(59, 130, 246, 0.15); padding: 11px; border-radius: 8px; border-left: 3px solid #3B82F6; text-align: center;">'
+                f'<p style="margin: 0; color: #93c5fd; font-size: 0.75em; font-weight: 500;">Available</p>'
+                f'<p style="margin: 4px 0 0 0; color: white; font-weight: bold; font-size: 1.15em;">{storage_available:.1f}</p>'
+                f'<p style="margin: 2px 0 0 0; color: #60a5fa; font-size: 0.7em;">m²</p>'
+                f'</div>'
+                f'<div style="background: rgba(59, 130, 246, 0.15); padding: 11px; border-radius: 8px; border-left: 3px solid #3B82F6; text-align: center;">'
+                f'<p style="margin: 0; color: #93c5fd; font-size: 0.75em; font-weight: 500;">Total</p>'
+                f'<p style="margin: 4px 0 0 0; color: white; font-weight: bold; font-size: 1.15em;">{TOTAL_STORAGE_AREA_M2:.0f}</p>'
+                f'<p style="margin: 2px 0 0 0; color: #60a5fa; font-size: 0.7em;">m²</p>'
+                f'</div></div></div>',
+                unsafe_allow_html=True
+            )
+
+        with col2:
+            st.markdown(
+                f'<div style="background: #1e293b; padding: 20px; border-radius: 12px; border-left: 4px solid #6366f1; box-shadow: 0 2px 8px rgba(0,0,0,0.3); height: 230px; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between;">'
+                f'<div style="text-align: center;"><h4 style="color: rgba(255,255,255,0.9); margin: 0; font-size: 0.9em;">🏭 WIP</h4></div>'
+                f'<div style="text-align: center;">'
+                f'<h1 style="color: white; margin: 10px 0; font-size: 2.8em; font-weight: bold; line-height: 1;">{wip_qty:,}</h1>'
+                f'<p style="color: rgba(255,255,255,0.8); margin: 0; font-size: 0.85em;">pcs</p></div>'
+                f'<div style="background: rgba(99, 102, 241, 0.15); padding: 9px; border-radius: 8px;">'
+                f'<div style="display: flex; justify-content: space-between; margin: 3px 0;">'
+                f'<span style="color: rgba(255,255,255,0.7); font-size: 0.75em;">Volume:</span>'
+                f'<span style="color: white; font-size: 0.75em; font-weight: 500;">{wip_cbm:.4f} m³</span></div>'
+                f'<div style="display: flex; justify-content: space-between; margin: 3px 0;">'
+                f'<span style="color: rgba(255,255,255,0.7); font-size: 0.75em;">Floor:</span>'
+                f'<span style="color: white; font-size: 0.75em; font-weight: 500;">{wip_floor:.2f} m²</span></div>'
+                f'</div></div>',
+                unsafe_allow_html=True
+            )
+
+        with col3:
+            st.markdown(
+                f'<div style="background: #1e293b; padding: 20px; border-radius: 12px; border-left: 4px solid #8b5cf6; box-shadow: 0 2px 8px rgba(0,0,0,0.3); height: 230px; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between;">'
+                f'<div style="text-align: center;"><h4 style="color: rgba(255,255,255,0.9); margin: 0; font-size: 0.9em;">📦 Finished</h4></div>'
+                f'<div style="text-align: center;">'
+                f'<h1 style="color: white; margin: 10px 0; font-size: 2.8em; font-weight: bold; line-height: 1;">{finished_qty:,}</h1>'
+                f'<p style="color: rgba(255,255,255,0.8); margin: 0; font-size: 0.85em;">pcs</p></div>'
+                f'<div style="background: rgba(139, 92, 246, 0.15); padding: 9px; border-radius: 8px;">'
+                f'<div style="display: flex; justify-content: space-between; margin: 3px 0;">'
+                f'<span style="color: rgba(255,255,255,0.7); font-size: 0.75em;">Volume:</span>'
+                f'<span style="color: white; font-size: 0.75em; font-weight: 500;">{finished_cbm:.4f} m³</span></div>'
+                f'<div style="display: flex; justify-content: space-between; margin: 3px 0;">'
+                f'<span style="color: rgba(255,255,255,0.7); font-size: 0.75em;">Floor:</span>'
+                f'<span style="color: white; font-size: 0.75em; font-weight: 500;">{finished_floor:.2f} m²</span></div>'
+                f'</div></div>',
+                unsafe_allow_html=True
+            )
+
+        st.markdown("<div style='margin: 24px 0;'></div>", unsafe_allow_html=True)
+
+        # ===== OVERTIME ANALYTICS =====
+        st.markdown("### ⏰ Overtime Analytics")
+
+        attendance_list = st.session_state.get("attendance", [])
+        today = datetime.date.today()
+
+        col_month, col_info = st.columns([1, 3])
+        with col_month:
+            months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni",
+                     "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+            selected_month_idx = st.selectbox(
+                "📅 Bulan",
+                range(1, 13),
+                index=today.month - 1,
+                format_func=lambda x: f"{months[x-1]} {today.year}",
+                key="dashboard_overtime_month"
+            )
+
+        ot_metrics = calculate_monthly_overtime_metrics(attendance_list, today.year, selected_month_idx)
+
+        with col_info:
+            workers_count = ot_metrics['total_workers']
+            ot_workers = ot_metrics['workers_with_overtime']
+            if workers_count > 0:
+                st.info(f"👷 **{ot_workers}** dari **{workers_count}** pekerja melakukan overtime bulan ini")
             else:
-                bar_color = "#10B981"  # Green
-                status_text = "✅ NORMAL"
+                st.info("👷 Belum ada data absensi bulan ini")
+
+        # 5 Overtime Cards - RED BORDER + BIGGER FONTS
+        col1, col2, col3, col4, col5 = st.columns(5)
+        HOURLY_RATE = 10840
+
+        # Calculate if there's overtime to determine border color
+        has_overtime = ot_metrics['total_overtime_hours'] > 0
+        ot_border_color = "#EF4444" if has_overtime else "#3B82F6"  # RED if overtime, BLUE if not
+
+        overtime_data = [
+            ("Total Overtime", f"{ot_metrics['total_overtime_hours']:.1f}", "jam", f"{months[selected_month_idx-1]}"),
+            ("Avg OT/Worker", f"{ot_metrics['total_overtime_hours'] / max(ot_metrics['total_workers'], 1):.1f}", "jam", "per pekerja"),
+            ("Avg OT Rate", f"{ot_metrics['avg_overtime_rate']:.1f}%", "rate", "dari jam kerja"),
+            ("Total OT Cost", f"Rp {ot_metrics['total_overtime_cost']:,.0f}", "biaya", f"@ Rp {HOURLY_RATE:,}/jam"),
+            ("Cost Increase", f"+{ot_metrics['cost_increase_pct']:.1f}%", "increase", "vs regular")
+        ]
+
+        for col, (title, value, unit, subtitle) in zip([col1, col2, col3, col4, col5], overtime_data):
+            with col:
+                # Adjust font size for long values
+                value_size = "1.6em" if len(str(value)) > 10 else "2.2em"
+                
+                st.markdown(
+                    f'<div style="background: #1e293b; padding: 16px; border-radius: 10px; border-left: 4px solid {ot_border_color}; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,0.2); height: 140px; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between;">'
+                    f'<p style="margin: 0; color: rgba(255,255,255,0.7); font-size: 0.75em; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{title}</p>'
+                    f'<h2 style="margin: 8px 0; color: white; font-size: {value_size}; font-weight: bold; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{value}</h2>'
+                    f'<div><p style="margin: 0; color: {"#ef4444" if has_overtime else "#60a5fa"}; font-size: 0.8em; font-weight: 500;">{unit}</p>'
+                    f'<p style="margin: 4px 0 0 0; color: rgba(255,255,255,0.5); font-size: 0.7em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{subtitle}</p></div></div>',
+                    unsafe_allow_html=True
+                )
+
+        # Top 3 Workers - RED BORDER + BIGGER FONTS
+        if ot_metrics['top_overtime_workers']:
+            st.markdown("<div style='margin: 20px 0;'></div>", unsafe_allow_html=True)
+            st.markdown("#### 🏆 Top 3 Overtime Workers")
             
-            st.markdown(f"""
-            <div style="background: #1F2937; padding: 20px; border-radius: 10px; border: 2px solid {bar_color};">
-                <h4 style="color: white; margin-bottom: 10px;">📦 Storage Capacity: {status_text}</h4>
-                <div style="background: #374151; height: 40px; border-radius: 8px; overflow: hidden; position: relative;">
-                    <div style="width: {min(storage_percentage, 100):.1f}%; height: 100%; background: {bar_color}; 
-                         display: flex; align-items: center; justify-content: center; transition: width 0.5s;">
-                        <span style="color: white; font-weight: bold; font-size: 1.1em;">{storage_percentage:.1f}%</span>
-                    </div>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-top: 10px; color: #9CA3AF;">
-                    <span>Used: {storage_used_m2:.2f} m²</span>
-                    <span>Available: {storage_available:.2f} m²</span>
-                    <span>Total: {TOTAL_STORAGE_AREA_M2:.0f} m²</span>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col_storage2:
-            st.markdown(f"""
-            <div class="storage-card">
-                <h4 style='margin: 0 0 5px 0;'>📐 Floor Space</h4>
-                <h2 style='margin: 5px 0; font-size: 2.2rem;'>{storage_used_m2:.2f} m²</h2>
-                <p style='margin: 5px 0; font-size: 1rem;'>of {TOTAL_STORAGE_AREA_M2:.0f} m² used</p>
-                <p style='margin: 5px 0; font-size: 0.9rem;'>({storage_percentage:.1f}% capacity)</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
+            col_top1, col_top2, col_top3 = st.columns(3)
+            medals = ["🥇", "🥈", "🥉"]
+            
+            for idx, (col, worker_data) in enumerate(zip([col_top1, col_top2, col_top3], ot_metrics['top_overtime_workers'])):
+                with col:
+                    st.markdown(
+                        f'<div style="background: #1e293b; padding: 16px; border-radius: 10px; border-left: 4px solid {ot_border_color}; box-shadow: 0 2px 6px rgba(0,0,0,0.2); height: 130px; overflow: hidden;">'
+                        f'<div style="display: flex; align-items: center; margin-bottom: 12px;">'
+                        f'<span style="font-size: 2em; margin-right: 12px; line-height: 1;">{medals[idx]}</span>'
+                        f'<div style="flex: 1; min-width: 0;"><p style="margin: 0; color: white; font-weight: bold; font-size: 0.95em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{worker_data["name"]}</p>'
+                        f'<p style="margin: 2px 0 0 0; color: #9CA3AF; font-size: 0.8em;">Rank #{idx + 1}</p></div></div>'
+                        f'<div style="background: rgba(239, 68, 68, 0.15); padding: 10px; border-radius: 6px;">'
+                        f'<div style="display: flex; justify-content: space-between; margin: 4px 0;">'
+                        f'<span style="color: #9CA3AF; font-size: 0.75em;">⏰ OT:</span>'
+                        f'<span style="color: white; font-size: 0.75em; font-weight: bold;">{worker_data["hours"]:.1f}h ({worker_data["rate"]:.1f}%)</span></div>'
+                        f'<div style="display: flex; justify-content: space-between; margin: 4px 0;">'
+                        f'<span style="color: #9CA3AF; font-size: 0.75em;">💰 Cost:</span>'
+                        f'<span style="color: #ef4444; font-size: 0.75em; font-weight: bold;">Rp {worker_data["cost"]:,.0f}</span></div></div></div>',
+                        unsafe_allow_html=True
+                    )
+
         st.markdown("---")
-        
-        # ===== PRODUCTION STATUS CARDS =====
-        st.markdown("### 🏭 Production Status")
-        col_prod1, col_prod2, col_prod3 = st.columns(3)
-        
-        with col_prod1:
-            st.markdown(f"""
-            <div class="wip-card">
-                <h4 style='margin: 0 0 10px 0;'>WIP (Work in Progress)</h4>
-                <h2 style='margin: 5px 0; font-size: 2.5rem;'>{wip_qty:,} pcs</h2>
-                <p style='margin: 5px 0; font-size: 0.9rem;'>Volume: {wip_cbm:.6f} m³</p>
-                <small style='font-size: 0.8rem;'>Warehouse → Revisi Fitting 2</small>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col_prod2:
-            st.markdown(f"""
-            <div class="finished-card">
-                <h4 style='margin: 0 0 10px 0;'>Produk Jadi (Packaging)</h4>
-                <h2 style='margin: 5px 0; font-size: 2.5rem;'>{finished_qty:,} pcs</h2>
-                <p style='margin: 5px 0; font-size: 0.9rem;'>Volume: {finished_cbm:.6f} m³</p>
-                <small style='font-size: 0.8rem;'>Ready for shipment</small>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col_prod3:
-            st.markdown(f"""
-            <div class="shipping-card">
-                <h4 style='margin: 0 0 10px 0;'>Pengiriman</h4>
-                <h2 style='margin: 5px 0; font-size: 2.5rem;'>{shipping_qty:,} pcs</h2>
-                <p style='margin: 5px 0; font-size: 0.9rem;'>Volume: {shipping_cbm:.6f} m³</p>
-                <small style='font-size: 0.8rem;'>In transit / Delivered</small>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
+
         # ===== RECENT ORDERS =====
         st.markdown("### 🕒 Recent Orders")
         
@@ -1329,7 +1599,7 @@ elif st.session_state["menu"] == "Input":
                 
                 pack_p, pack_l, pack_t = 0, 0, 0
                 cbm_per_pcs = total_cbm / qty if qty > 0 else 0
-        
+
     description = st.text_area("Description", placeholder="Deskripsi produk...", height=50, key="form_desc")
     keterangan = st.text_area("Keterangan Tambahan", placeholder="Catatan khusus...", height=50, key="form_notes")
     
@@ -1541,7 +1811,7 @@ elif st.session_state["menu"] == "Input":
                 else:
                     st.warning("⚠️ Pilih buyer dan tambahkan minimal 1 produk!")
 
-# ===== MENU: ABSENSI - NEW =====
+# ===== MENU: ABSENSI - TAB BASED WITH SEARCH =====
 elif st.session_state["menu"] == "Absensi":
     st.header("📝 ABSENSI PEKERJA HARIAN")
     st.caption("Input kehadiran pekerja oleh Mandor")
@@ -1553,7 +1823,7 @@ elif st.session_state["menu"] == "Absensi":
         st.warning("⚠️ Belum ada data pekerja. Silakan tambah pekerja di menu Database → Pekerja Harian")
         st.stop()
     
-    tab1, tab2, tab3 = st.tabs(["📝 Input Absensi Hari Ini", "📋 Riwayat Absensi", "📊 Laporan"])
+    tab1, tab2, tab3 = st.tabs(["📝 Input Absensi", "📋 Riwayat Absensi", "📊 Laporan"])
     
     with tab1:
         st.markdown("### 📅 Input Absensi")
@@ -1575,155 +1845,292 @@ elif st.session_state["menu"] == "Absensi":
         
         st.markdown("---")
         
-        # Quick action: Mark all present
-        col_quick1, col_quick2 = st.columns(2)
-        with col_quick1:
-            if st.button("✅ Tandai Semua HADIR", use_container_width=True, type="primary"):
-                st.session_state["mark_all_present"] = True
-                st.rerun()
-        with col_quick2:
-            if st.button("🔄 Reset Form", use_container_width=True, type="secondary"):
-                if "mark_all_present" in st.session_state:
-                    del st.session_state["mark_all_present"]
-                st.rerun()
+        # Tab untuk Absen Masuk / Pulang
+        tab_masuk, tab_pulang = st.tabs(["🌅 ABSEN MASUK", "🌆 ABSEN PULANG"])
         
-        mark_all = st.session_state.get("mark_all_present", False)
-        
-        st.markdown("---")
-        st.markdown("### 👷 Daftar Pekerja")
-        st.caption("💡 **Tip**: Centang 'Semua Hadir' lalu hanya edit yang tidak masuk/overtime")
-        
-        # Create attendance form
-        attendance_data = {}
-        
-        for idx, worker in enumerate(workers):
-            worker_id = worker.get("id", str(idx))
-            worker_name = worker.get("name", "Unknown")
-            worker_position = worker.get("position", "-")
+        # ===== TAB ABSEN MASUK =====
+        with tab_masuk:
+            st.markdown("### 🌅 Absen Masuk (Check-In)")
+            st.info("💡 Default: Semua hadir jam 08:00. Uncheck yang tidak masuk atau ubah jam yang telat.")
             
-            # Get existing record or default
-            existing = existing_records.get(worker_id, {})
+            # Search bar
+            search_masuk = st.text_input("🔍 Cari nama pekerja", key="search_masuk", placeholder="Ketik nama...")
             
-            with st.container():
-                st.markdown(f"""
-                <div class="attendance-card">
-                    <strong style="color: #60A5FA; font-size: 1.1em;">👤 {worker_name}</strong>
-                    <span style="color: #9CA3AF; margin-left: 10px;">{worker_position}</span>
-                </div>
-                """, unsafe_allow_html=True)
+            st.markdown("---")
+            
+            # Filter workers
+            filtered_workers = workers
+            if search_masuk:
+                filtered_workers = [w for w in workers if search_masuk.lower() in w.get("name", "").lower()]
+            
+            if not filtered_workers:
+                st.warning("Tidak ada pekerja yang cocok dengan pencarian")
+            else:
+                # Attendance data untuk absen masuk
+                masuk_data = {}
                 
-                col_att1, col_att2, col_att3, col_att4 = st.columns([1, 1, 1, 1])
+                # Header
+                col_h1, col_h2, col_h3, col_h4 = st.columns([0.5, 2, 1.5, 1.5])
+                col_h1.markdown("**✓**")
+                col_h2.markdown("**Nama**")
+                col_h3.markdown("**Jam Masuk**")
+                col_h4.markdown("**Status**")
+                st.markdown("---")
                 
-                with col_att1:
-                    # Status
-                    default_status = "Hadir" if mark_all else existing.get("status", "Hadir")
-                    status = st.selectbox(
-                        "Status",
-                        ["Hadir", "Tidak Hadir", "Izin", "Sakit"],
-                        index=["Hadir", "Tidak Hadir", "Izin", "Sakit"].index(default_status),
-                        key=f"status_{worker_id}"
-                    )
-                
-                with col_att2:
-                    # Check-in time
-                    if status == "Hadir":
-                        default_checkin = existing.get("check_in", "08:00")
-                        check_in = st.text_input("Jam Masuk", value=default_checkin, key=f"checkin_{worker_id}", placeholder="08:00")
-                    else:
-                        check_in = "-"
-                        st.text_input("Jam Masuk", value="-", disabled=True, key=f"checkin_{worker_id}")
-                
-                with col_att3:
-                    # Check-out time
-                    if status == "Hadir":
-                        default_checkout = existing.get("check_out", "16:00")
-                        check_out = st.text_input("Jam Pulang", value=default_checkout, key=f"checkout_{worker_id}", placeholder="16:00")
-                    else:
-                        check_out = "-"
-                        st.text_input("Jam Pulang", value="-", disabled=True, key=f"checkout_{worker_id}")
-                
-                with col_att4:
-                    # Overtime
-                    if status == "Hadir":
-                        is_overtime = st.checkbox("⏰ Overtime", value=existing.get("overtime", False), key=f"overtime_{worker_id}")
-                    else:
-                        is_overtime = False
-                        st.checkbox("⏰ Overtime", value=False, disabled=True, key=f"overtime_{worker_id}")
-                
-                attendance_data[worker_id] = {
-                    "name": worker_name,
-                    "position": worker_position,
-                    "status": status,
-                    "check_in": check_in,
-                    "check_out": check_out,
-                    "overtime": is_overtime
-                }
+                for idx, worker in enumerate(filtered_workers):
+                    worker_id = worker.get("id", str(idx))
+                    worker_name = worker.get("name", "Unknown")
+                    worker_position = worker.get("position", "-")
+                    
+                    # Get existing data
+                    existing = existing_records.get(worker_id, {})
+                    default_hadir = existing.get("status", "Hadir") == "Hadir"
+                    
+                    col1, col2, col3, col4 = st.columns([0.5, 2, 1.5, 1.5])
+                    
+                    with col1:
+                        is_hadir = st.checkbox("", value=default_hadir, key=f"masuk_check_{worker_id}", label_visibility="collapsed")
+                    
+                    with col2:
+                        st.markdown(f"**{worker_name}**")
+                        st.caption(worker_position)
+                    
+                    with col3:
+                        if is_hadir:
+                            try:
+                                default_time_str = existing.get("check_in", "08:00")
+                                default_time = datetime.datetime.strptime(default_time_str, "%H:%M").time()
+                            except:
+                                default_time = datetime.time(8, 0)
+                            
+                            check_in_time = st.time_input(
+                                "Jam",
+                                value=default_time,
+                                key=f"masuk_time_{worker_id}",
+                                label_visibility="collapsed"
+                            )
+                            check_in = check_in_time.strftime("%H:%M")
+                        else:
+                            st.text_input("Jam", value="-", disabled=True, key=f"masuk_time_disabled_{worker_id}", label_visibility="collapsed")
+                            check_in = "-"
+                    
+                    with col4:
+                        if is_hadir:
+                            status = st.selectbox(
+                                "Status",
+                                ["Hadir", "Izin", "Sakit"],
+                                index=0,
+                                key=f"masuk_status_{worker_id}",
+                                label_visibility="collapsed"
+                            )
+                        else:
+                            status = "Tidak Hadir"
+                            st.text_input("Status", value="Tidak Hadir", disabled=True, key=f"masuk_status_disabled_{worker_id}", label_visibility="collapsed")
+                    
+                    masuk_data[worker_id] = {
+                        "name": worker_name,
+                        "position": worker_position,
+                        "status": status,
+                        "check_in": check_in,
+                        "check_out": existing.get("check_out", "-")  # Keep existing checkout
+                    }
                 
                 st.markdown("---")
+                
+                # Summary
+                hadir_count = sum(1 for d in masuk_data.values() if d["status"] == "Hadir")
+                st.success(f"✅ {hadir_count}/{len(filtered_workers)} pekerja hadir")
+                
+                # Save button
+                if st.button("💾 SIMPAN ABSEN MASUK", use_container_width=True, type="primary", key="save_masuk"):
+                    # Merge dengan data yang sudah ada
+                    if existing_attendance:
+                        # Update existing records
+                        for worker_id, data in masuk_data.items():
+                            if worker_id in existing_records:
+                                existing_records[worker_id].update({
+                                    "status": data["status"],
+                                    "check_in": data["check_in"]
+                                })
+                            else:
+                                existing_records[worker_id] = data
+                        
+                        # Update attendance record
+                        for i, att in enumerate(attendance_list):
+                            if att.get("date") == date_str:
+                                attendance_list[i]["records"] = existing_records
+                                # Recalculate stats
+                                attendance_list[i]["hadir"] = sum(1 for r in existing_records.values() if r["status"] == "Hadir")
+                                attendance_list[i]["tidak_hadir"] = sum(1 for r in existing_records.values() if r["status"] == "Tidak Hadir")
+                                attendance_list[i]["izin"] = sum(1 for r in existing_records.values() if r["status"] == "Izin")
+                                attendance_list[i]["sakit"] = sum(1 for r in existing_records.values() if r["status"] == "Sakit")
+                                break
+                    else:
+                        # Create new attendance
+                        new_attendance = {
+                            "date": date_str,
+                            "created_at": str(datetime.datetime.now()),
+                            "created_by": st.session_state.get("user_name", "Unknown"),
+                            "total_workers": len(workers),
+                            "hadir": sum(1 for d in masuk_data.values() if d["status"] == "Hadir"),
+                            "tidak_hadir": sum(1 for d in masuk_data.values() if d["status"] == "Tidak Hadir"),
+                            "izin": sum(1 for d in masuk_data.values() if d["status"] == "Izin"),
+                            "sakit": sum(1 for d in masuk_data.values() if d["status"] == "Sakit"),
+                            "overtime_hours": 0,
+                            "records": masuk_data
+                        }
+                        attendance_list.append(new_attendance)
+                    
+                    st.session_state["attendance"] = attendance_list
+                    if save_attendance(attendance_list):
+                        st.success(f"✅ Absen masuk tanggal {date_str} berhasil disimpan!")
+                        st.rerun()
         
-        # Save button
-        if st.button("💾 SIMPAN ABSENSI", use_container_width=True, type="primary"):
-            # Count statistics
-            hadir_count = sum(1 for r in attendance_data.values() if r["status"] == "Hadir")
-            tidak_hadir = sum(1 for r in attendance_data.values() if r["status"] == "Tidak Hadir")
-            izin_count = sum(1 for r in attendance_data.values() if r["status"] == "Izin")
-            sakit_count = sum(1 for r in attendance_data.values() if r["status"] == "Sakit")
-            overtime_count = sum(1 for r in attendance_data.values() if r.get("overtime", False))
+        # ===== TAB ABSEN PULANG =====
+        with tab_pulang:
+            st.markdown("### 🌆 Absen Pulang (Check-Out)")
             
-            new_attendance = {
-                "date": date_str,
-                "created_at": str(datetime.datetime.now()),
-                "created_by": st.session_state.get("user_name", "Unknown"),
-                "total_workers": len(workers),
-                "hadir": hadir_count,
-                "tidak_hadir": tidak_hadir,
-                "izin": izin_count,
-                "sakit": sakit_count,
-                "overtime": overtime_count,
-                "records": attendance_data
-            }
+            # Check if masuk sudah di-input
+            if not existing_attendance:
+                st.error("❌ Belum ada data absen masuk untuk tanggal ini!")
+                st.info("💡 Silakan input absen masuk terlebih dahulu di tab sebelah.")
+                st.stop()
             
-            # Update or add
-            updated = False
-            for i, att in enumerate(attendance_list):
-                if att.get("date") == date_str:
-                    attendance_list[i] = new_attendance
-                    updated = True
-                    break
+            st.info("💡 Default: Semua pulang jam 16:00. Ubah jam untuk yang overtime.")
             
-            if not updated:
-                attendance_list.append(new_attendance)
+            # Search bar
+            search_pulang = st.text_input("🔍 Cari nama pekerja", key="search_pulang", placeholder="Ketik nama...")
             
-            st.session_state["attendance"] = attendance_list
-            if save_attendance(attendance_list):
-                st.success(f"✅ Absensi tanggal {date_str} berhasil disimpan!")
-                st.info(f"📊 Hadir: {hadir_count} | Tidak Hadir: {tidak_hadir} | Izin: {izin_count} | Sakit: {sakit_count} | Overtime: {overtime_count}")
-                if "mark_all_present" in st.session_state:
-                    del st.session_state["mark_all_present"]
-                st.balloons()
+            st.markdown("---")
+            
+            # Filter workers yang hadir
+            workers_hadir = [w for w in workers if existing_records.get(w.get("id", ""), {}).get("status") == "Hadir"]
+            
+            if search_pulang:
+                workers_hadir = [w for w in workers_hadir if search_pulang.lower() in w.get("name", "").lower()]
+            
+            if not workers_hadir:
+                st.warning("Tidak ada pekerja yang hadir atau cocok dengan pencarian")
+            else:
+                # Attendance data untuk absen pulang
+                pulang_data = {}
+                
+                # Header
+                col_h1, col_h2, col_h3, col_h4 = st.columns([2, 1.5, 1.5, 2])
+                col_h1.markdown("**Nama**")
+                col_h2.markdown("**Jam Masuk**")
+                col_h3.markdown("**Jam Pulang**")
+                col_h4.markdown("**Overtime**")
+                st.markdown("---")
+                
+                for idx, worker in enumerate(workers_hadir):
+                    worker_id = worker.get("id", str(idx))
+                    worker_name = worker.get("name", "Unknown")
+                    worker_position = worker.get("position", "-")
+                    
+                    existing = existing_records.get(worker_id, {})
+                    check_in = existing.get("check_in", "08:00")
+                    
+                    col1, col2, col3, col4 = st.columns([2, 1.5, 1.5, 2])
+                    
+                    with col1:
+                        st.markdown(f"**{worker_name}**")
+                        st.caption(worker_position)
+                    
+                    with col2:
+                        st.caption(f"🌅 {check_in}")
+                    
+                    with col3:
+                        try:
+                            default_out_str = existing.get("check_out", "16:00")
+                            if default_out_str == "-":
+                                default_out = datetime.time(16, 0)
+                            else:
+                                default_out = datetime.datetime.strptime(default_out_str, "%H:%M").time()
+                        except:
+                            default_out = datetime.time(16, 0)
+                        
+                        check_out_time = st.time_input(
+                            "Pulang",
+                            value=default_out,
+                            key=f"pulang_time_{worker_id}",
+                            label_visibility="collapsed"
+                        )
+                        check_out = check_out_time.strftime("%H:%M")
+                    
+                    with col4:
+                        # Calculate overtime
+                        ot_hours = calculate_overtime_hours(check_in, check_out)
+                        if ot_hours > 0:
+                            ot_cost = calculate_overtime_cost(ot_hours)
+                            st.warning(f"⏰ {ot_hours:.1f}h | 💰 Rp {ot_cost:,.0f}")
+                        else:
+                            st.success("✅ Normal")
+                    
+                    pulang_data[worker_id] = {
+                        "check_out": check_out
+                    }
+                
+                st.markdown("---")
+                
+                # Summary
+                total_ot = sum(calculate_overtime_hours(existing_records.get(wid, {}).get("check_in", "08:00"), pulang_data[wid]["check_out"]) for wid in pulang_data.keys())
+                ot_workers = sum(1 for wid in pulang_data.keys() if calculate_overtime_hours(existing_records.get(wid, {}).get("check_in", "08:00"), pulang_data[wid]["check_out"]) > 0)
+                
+                col_sum1, col_sum2 = st.columns(2)
+                col_sum1.metric("⏰ Total Overtime", f"{total_ot:.1f} jam")
+                col_sum2.metric("👷 Pekerja Overtime", f"{ot_workers}/{len(workers_hadir)}")
+                
+                # Save button
+                if st.button("💾 SIMPAN ABSEN PULANG", use_container_width=True, type="primary", key="save_pulang"):
+                    # Update existing records
+                    for worker_id, data in pulang_data.items():
+                        if worker_id in existing_records:
+                            existing_records[worker_id]["check_out"] = data["check_out"]
+                    
+                    # Recalculate overtime
+                    total_overtime_hours = 0
+                    for worker_id, record in existing_records.items():
+                        if record.get("status") == "Hadir":
+                            ot = calculate_overtime_hours(record.get("check_in", "08:00"), record.get("check_out", "16:00"))
+                            total_overtime_hours += ot
+                    
+                    # Update attendance record
+                    for i, att in enumerate(attendance_list):
+                        if att.get("date") == date_str:
+                            attendance_list[i]["records"] = existing_records
+                            attendance_list[i]["overtime_hours"] = total_overtime_hours
+                            break
+                    
+                    st.session_state["attendance"] = attendance_list
+                    if save_attendance(attendance_list):
+                        st.success(f"✅ Absen pulang tanggal {date_str} berhasil disimpan!")
+                        st.info(f"⏰ Total overtime: {total_overtime_hours:.1f} jam dari {ot_workers} pekerja")
+                        st.balloons()
+                        st.rerun()
     
     with tab2:
         st.markdown("### 📋 Riwayat Absensi")
         
         if attendance_list:
-            # Sort by date descending
             sorted_attendance = sorted(attendance_list, key=lambda x: x.get("date", ""), reverse=True)
             
-            for att in sorted_attendance[:30]:  # Show last 30 days
+            for att in sorted_attendance[:30]:
                 date_display = att.get("date", "Unknown")
                 hadir = att.get("hadir", 0)
                 total = att.get("total_workers", 0)
                 pct = (hadir / total * 100) if total > 0 else 0
+                ot_hours = att.get("overtime_hours", 0)
                 
-                with st.expander(f"📅 {date_display} | Hadir: {hadir}/{total} ({pct:.0f}%)"):
+                with st.expander(f"📅 {date_display} | Hadir: {hadir}/{total} ({pct:.0f}%) | ⏰ OT: {ot_hours:.1f}h"):
                     col_sum1, col_sum2, col_sum3, col_sum4 = st.columns(4)
                     col_sum1.metric("✅ Hadir", att.get("hadir", 0))
                     col_sum2.metric("❌ Tidak Hadir", att.get("tidak_hadir", 0))
                     col_sum3.metric("📝 Izin", att.get("izin", 0))
                     col_sum4.metric("🏥 Sakit", att.get("sakit", 0))
                     
-                    if att.get("overtime", 0) > 0:
-                        st.info(f"⏰ Overtime: {att.get('overtime', 0)} orang")
+                    if ot_hours > 0:
+                        st.info(f"⏰ Total Overtime: {ot_hours:.1f} jam")
                     
                     st.markdown("---")
                     st.markdown("**Detail:**")
@@ -1731,23 +2138,31 @@ elif st.session_state["menu"] == "Absensi":
                     records = att.get("records", {})
                     for worker_id, record in records.items():
                         status = record.get("status", "Unknown")
+                        
                         if status == "Hadir":
-                            badge = "present-badge"
+                            badge_color = "#10B981"
                             icon = "✅"
                         elif status == "Tidak Hadir":
-                            badge = "absent-badge"
+                            badge_color = "#EF4444"
                             icon = "❌"
-                        else:
-                            badge = "overtime-badge"
+                        elif status == "Izin":
+                            badge_color = "#3B82F6"
                             icon = "📝"
+                        else:
+                            badge_color = "#F59E0B"
+                            icon = "🏥"
                         
-                        overtime_text = " ⏰OT" if record.get("overtime", False) else ""
+                        ot_text = ""
+                        if status == "Hadir":
+                            ot = calculate_overtime_hours(record.get("check_in", "08:00"), record.get("check_out", "16:00"))
+                            if ot > 0:
+                                ot_text = f" ⏰ {ot:.1f}h"
                         
                         st.markdown(f"""
-                        <div style="display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #374151;">
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #374151;">
                             <span>{icon} <strong>{record.get('name', 'Unknown')}</strong></span>
-                            <span>{record.get('check_in', '-')} - {record.get('check_out', '-')}{overtime_text}</span>
-                            <span class="{badge}">{status}</span>
+                            <span>{record.get('check_in', '-')} → {record.get('check_out', '-')}{ot_text}</span>
+                            <span style="background: {badge_color}; color: white; padding: 3px 10px; border-radius: 10px; font-size: 0.85em;">{status}</span>
                         </div>
                         """, unsafe_allow_html=True)
         else:
@@ -1757,32 +2172,27 @@ elif st.session_state["menu"] == "Absensi":
         st.markdown("### 📊 Laporan Kehadiran")
         
         if attendance_list:
-            # Date range filter
             col_rep1, col_rep2 = st.columns(2)
             with col_rep1:
                 start_date = st.date_input("Dari Tanggal", datetime.date.today() - datetime.timedelta(days=30), key="report_start")
             with col_rep2:
                 end_date = st.date_input("Sampai Tanggal", datetime.date.today(), key="report_end")
             
-            # Filter data
             filtered = [a for a in attendance_list if start_date <= datetime.datetime.strptime(a.get("date", "2000-01-01"), "%Y-%m-%d").date() <= end_date]
             
             if filtered:
-                # Summary
                 total_days = len(filtered)
                 avg_hadir = sum(a.get("hadir", 0) for a in filtered) / total_days
                 avg_pct = (avg_hadir / len(workers) * 100) if workers else 0
-                total_overtime = sum(a.get("overtime", 0) for a in filtered)
+                total_overtime_hours = sum(a.get("overtime_hours", 0) for a in filtered)
                 
                 col_rsum1, col_rsum2, col_rsum3, col_rsum4 = st.columns(4)
                 col_rsum1.metric("📅 Total Hari", total_days)
                 col_rsum2.metric("📊 Rata-rata Hadir", f"{avg_hadir:.1f}")
                 col_rsum3.metric("📈 Rata-rata %", f"{avg_pct:.1f}%")
-                col_rsum4.metric("⏰ Total Overtime", total_overtime)
+                col_rsum4.metric("⏰ Total Overtime", f"{total_overtime_hours:.1f}h")
                 
                 st.markdown("---")
-                
-                # Per worker statistics
                 st.markdown("#### 👷 Statistik Per Pekerja")
                 
                 worker_stats = {}
@@ -1794,7 +2204,7 @@ elif st.session_state["menu"] == "Absensi":
                         "tidak_hadir": 0,
                         "izin": 0,
                         "sakit": 0,
-                        "overtime": 0
+                        "overtime_hours": 0
                     }
                 
                 for att in filtered:
@@ -1804,17 +2214,15 @@ elif st.session_state["menu"] == "Absensi":
                             status = record.get("status", "")
                             if status == "Hadir":
                                 worker_stats[worker_id]["hadir"] += 1
+                                ot = calculate_overtime_hours(record.get("check_in", "08:00"), record.get("check_out", "16:00"))
+                                worker_stats[worker_id]["overtime_hours"] += ot
                             elif status == "Tidak Hadir":
                                 worker_stats[worker_id]["tidak_hadir"] += 1
                             elif status == "Izin":
                                 worker_stats[worker_id]["izin"] += 1
                             elif status == "Sakit":
                                 worker_stats[worker_id]["sakit"] += 1
-                            
-                            if record.get("overtime", False):
-                                worker_stats[worker_id]["overtime"] += 1
                 
-                # Display as table
                 stats_data = []
                 for worker_id, stats in worker_stats.items():
                     pct = (stats["hadir"] / total_days * 100) if total_days > 0 else 0
@@ -1824,14 +2232,13 @@ elif st.session_state["menu"] == "Absensi":
                         "Tidak Hadir": stats["tidak_hadir"],
                         "Izin": stats["izin"],
                         "Sakit": stats["sakit"],
-                        "Overtime": stats["overtime"],
+                        "Overtime (jam)": f"{stats['overtime_hours']:.1f}",
                         "% Kehadiran": f"{pct:.1f}%"
                     })
                 
                 stats_df = pd.DataFrame(stats_data)
                 st.dataframe(stats_df, use_container_width=True, hide_index=True)
                 
-                # Export
                 csv_data = stats_df.to_csv(index=False).encode('utf-8')
                 st.download_button(
                     label="📥 Download Laporan (CSV)",
@@ -1980,10 +2387,10 @@ elif st.session_state["menu"] == "Database":
         st.markdown("---")
         st.markdown("### ➕ Add New Supplier")
         with st.form("add_supplier_form", clear_on_submit=True):
-            new_supp_name = st.text_input("Nama Supplier *")
-            new_supp_address = st.text_area("Alamat", height=80)
-            new_supp_spec = st.text_input("Spesialisasi")
-            new_supp_contact = st.text_input("Contact")
+            new_supp_name = st.text_input("Nama Supplier *",placeholder="")
+            new_supp_address = st.text_area("Alamat", height=80,placeholder="")
+            new_supp_spec = st.text_input("Spesialisasi",placeholder="")
+            new_supp_contact = st.text_input("Contact",placeholder="")
             
             if st.form_submit_button("➕ Add Supplier", use_container_width=True, type="primary"):
                 if new_supp_name:
