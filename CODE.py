@@ -103,7 +103,7 @@ def check_permission(required_role):
     
     # Procurement: Database, Input, Procurement
     elif user_role == "admin":
-        return required_role in ["Dashboard","Database","Input","Procurement"]
+        return required_role in ["Dashboard","Database","Input","Procurement","Absensi"]
     
     # Admin: Semua menu
     elif user_role == "procurement":
