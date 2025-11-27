@@ -1443,31 +1443,92 @@ if st.session_state["menu"] == "Dashboard":
                             
                             if len(orders_on_date) > 0:
                                 done_count = len(orders_on_date[orders_on_date['Tracking Status'] == 'Done'])
+                                ongoing_count = len(orders_on_date[orders_on_date['Tracking Status'] == 'On Going'])
+                                
+                                # Build tooltip content
+                                tooltip_items = []
+                                for idx, order in orders_on_date.iterrows():
+                                    status_icon = "✅" if order['Tracking Status'] == 'Done' else "🔄"
+                                    tooltip_items.append(f"{status_icon} {order['Order ID']} - {order['Buyer']}")
+                                
+                                tooltip_text = "\\n".join(tooltip_items)
+                                
                                 if done_count == len(orders_on_date):
                                     bg_color = "#10B981"
+                                    status_label = "All Done"
                                 elif date_obj < today:
                                     bg_color = "#EF4444"
+                                    status_label = "Overdue"
                                 elif date_obj == today:
                                     bg_color = "#F59E0B"
+                                    status_label = "Due Today"
                                 else:
                                     bg_color = "#3B82F6"
+                                    status_label = "Upcoming"
                                 
                                 week_cols[i].markdown(f"""
-                                <div style='background-color: {bg_color}; padding: 5px; border-radius: 5px; text-align: center;'>
+                                <div style='background-color: {bg_color}; padding: 5px; border-radius: 5px; text-align: center; cursor: pointer;' 
+                                     title="{status_label}&#10;{len(orders_on_date)} orders&#10;Done: {done_count} | Ongoing: {ongoing_count}&#10;&#10;{tooltip_text}">
                                     <b style='color: white;'>{day}</b><br>
                                     <span style='color: white; font-size: 10px;'>{len(orders_on_date)}</span>
                                 </div>
                                 """, unsafe_allow_html=True)
                             else:
                                 if date_obj == today:
-                                    week_cols[i].markdown(f"<div style='padding: 5px; text-align: center; border: 2px solid #3B82F6; border-radius: 5px;'><b>{day}</b></div>", unsafe_allow_html=True)
+                                    week_cols[i].markdown(f"<div style='padding: 5px; text-align: center; border: 2px solid #3B82F6; border-radius: 5px;' title='Today'><b>{day}</b></div>", unsafe_allow_html=True)
                                 else:
                                     week_cols[i].markdown(f"<div style='padding: 5px; text-align: center;'>{day}</div>", unsafe_allow_html=True)
                         else:
                             if date_obj == today:
-                                week_cols[i].markdown(f"<div style='padding: 5px; text-align: center; border: 2px solid #3B82F6; border-radius: 5px;'><b>{day}</b></div>", unsafe_allow_html=True)
+                                week_cols[i].markdown(f"<div style='padding: 5px; text-align: center; border: 2px solid #3B82F6; border-radius: 5px;' title='Today'><b>{day}</b></div>", unsafe_allow_html=True)
                             else:
                                 week_cols[i].markdown(f"<div style='padding: 5px; text-align: center;'>{day}</div>", unsafe_allow_html=True)
+        
+            # Calendar Legend
+            st.markdown("---")
+            st.markdown("**📖 Calendar Legend:**")
+            col_leg1, col_leg2, col_leg3, col_leg4 = st.columns(4)
+            col_leg1.markdown("🟢 **All Done** - All orders completed")
+            col_leg2.markdown("🔴 **Overdue** - Past due date")
+            col_leg3.markdown("🟠 **Due Today** - Due today")
+            col_leg4.markdown("🔵 **Upcoming** - Future orders")
+            
+            # Expandable details for each date with orders
+            if not df_month.empty:
+                st.markdown("---")
+                st.markdown("**📋 Orders Details by Date:**")
+                
+                dates_with_orders = df_month['Due Date'].dt.date.unique()
+                dates_with_orders = sorted(dates_with_orders)
+                
+                for date_obj in dates_with_orders:
+                    orders_on_date = df_month[df_month['Due Date'].dt.date == date_obj]
+                    done_count = len(orders_on_date[orders_on_date['Tracking Status'] == 'Done'])
+                    ongoing_count = len(orders_on_date) - done_count
+                    
+                    # Date status icon
+                    if done_count == len(orders_on_date):
+                        date_icon = "🟢"
+                    elif date_obj < today:
+                        date_icon = "🔴"
+                    elif date_obj == today:
+                        date_icon = "🟠"
+                    else:
+                        date_icon = "🔵"
+                    
+                    with st.expander(f"{date_icon} **{date_obj.strftime('%d %B %Y')}** - {len(orders_on_date)} orders (✅ {done_count} | 🔄 {ongoing_count})"):
+                        for idx, order in orders_on_date.iterrows():
+                            status_icon = "✅" if order['Tracking Status'] == 'Done' else "🔄"
+                            progress_val = int(order['Progress'].rstrip('%'))
+                            
+                            col_ord1, col_ord2 = st.columns([3, 1])
+                            with col_ord1:
+                                st.markdown(f"{status_icon} **{order['Order ID']}** - {order['Buyer']}")
+                                st.caption(f"📦 {order['Produk']} | Qty: {order['Qty']} pcs")
+                            with col_ord2:
+                                st.progress(progress_val / 100)
+                                st.caption(f"{order['Progress']}")
+                            st.divider()
         
         with col_chart:
             st.markdown("### 📊 Status Distribution")
