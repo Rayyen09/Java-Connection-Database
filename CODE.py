@@ -8,393 +8,6 @@ import plotly.figure_factory as ff
 from streamlit.components.v1 import html
 import hashlib
 
-# ===== THEME CONFIGURATION SYSTEM =====
-class ThemeConfig:
-    """Comprehensive theme configuration for light and dark modes"""
-    
-    LIGHT_THEME = {
-        # Primary colors
-        "primary": "#3B82F6",
-        "primary_dark": "#1E40AF",
-        "primary_light": "#DBEAFE",
-        
-        # Background colors
-        "bg_primary": "#FFFFFF",
-        "bg_secondary": "#F3F4F6",
-        "bg_tertiary": "#E5E7EB",
-        "bg_card": "#F9FAFB",
-        
-        # Text colors
-        "text_primary": "#111827",
-        "text_secondary": "#6B7280",
-        "text_tertiary": "#9CA3AF",
-        "text_inverse": "#FFFFFF",
-        
-        # Border colors
-        "border_primary": "#E5E7EB",
-        "border_secondary": "#D1D5DB",
-        
-        # Status colors
-        "success": "#10B981",
-        "warning": "#F59E0B",
-        "error": "#EF4444",
-        "info": "#3B82F6",
-        
-        # UI Elements
-        "card_shadow": "rgba(0, 0, 0, 0.1)",
-        "hover_bg": "#F3F4F6",
-        "input_bg": "#FFFFFF",
-        "input_border": "#D1D5DB",
-        "input_focus": "#3B82F6",
-    }
-    
-    DARK_THEME = {
-        # Primary colors
-        "primary": "#60A5FA",
-        "primary_dark": "#3B82F6",
-        "primary_light": "#1E3A8A",
-        
-        # Background colors
-        "bg_primary": "#0F172A",
-        "bg_secondary": "#1E293B",
-        "bg_tertiary": "#334155",
-        "bg_card": "#1F2937",
-        
-        # Text colors
-        "text_primary": "#F3F4F6",
-        "text_secondary": "#D1D5DB",
-        "text_tertiary": "#9CA3AF",
-        "text_inverse": "#111827",
-        
-        # Border colors
-        "border_primary": "#374151",
-        "border_secondary": "#4B5563",
-        
-        # Status colors
-        "success": "#10B981",
-        "warning": "#FBBF24",
-        "error": "#F87171",
-        "info": "#60A5FA",
-        
-        # UI Elements
-        "card_shadow": "rgba(0, 0, 0, 0.5)",
-        "hover_bg": "#374151",
-        "input_bg": "#1F2937",
-        "input_border": "#4B5563",
-        "input_focus": "#60A5FA",
-    }
-
-def get_theme():
-    """Get current theme based on Streamlit color mode"""
-    return ThemeConfig.DARK_THEME if st.get_option("theme.base") == "dark" else ThemeConfig.LIGHT_THEME
-
-def apply_dynamic_theme():
-    """Apply dynamic theme CSS based on current mode"""
-    theme = get_theme()
-    
-    css = f"""
-    <style>
-    :root {{
-        --color-primary: {theme['primary']};
-        --color-primary-dark: {theme['primary_dark']};
-        --color-primary-light: {theme['primary_light']};
-        
-        --bg-primary: {theme['bg_primary']};
-        --bg-secondary: {theme['bg_secondary']};
-        --bg-tertiary: {theme['bg_tertiary']};
-        --bg-card: {theme['bg_card']};
-        
-        --text-primary: {theme['text_primary']};
-        --text-secondary: {theme['text_secondary']};
-        --text-tertiary: {theme['text_tertiary']};
-        --text-inverse: {theme['text_inverse']};
-        
-        --border-primary: {theme['border_primary']};
-        --border-secondary: {theme['border_secondary']};
-        
-        --color-success: {theme['success']};
-        --color-warning: {theme['warning']};
-        --color-error: {theme['error']};
-        --color-info: {theme['info']};
-        
-        --card-shadow: {theme['card_shadow']};
-        --hover-bg: {theme['hover_bg']};
-        --input-bg: {theme['input_bg']};
-        --input-border: {theme['input_border']};
-        --input-focus: {theme['input_focus']};
-    }}
-    
-    /* Global Styles */
-    body {{
-        background-color: var(--bg-primary);
-        color: var(--text-primary);
-    }}
-    
-    .main {{
-        background-color: var(--bg-primary);
-    }}
-    
-    .stSidebar {{
-        background-color: var(--bg-secondary);
-    }}
-    
-    /* Headers */
-    h1, h2, h3, h4, h5, h6 {{
-        color: var(--text-primary) !important;
-    }}
-    
-    p, span, div {{
-        color: var(--text-primary);
-    }}
-    
-    /* Cards & Containers */
-    .stCard, .stContainer {{
-        background-color: var(--bg-card);
-        border: 1px solid var(--border-primary);
-        box-shadow: 0 2px 8px var(--card-shadow);
-    }}
-    
-    /* Input Fields */
-    .stTextInput > div > div > input,
-    .stNumberInput > div > div > input,
-    .stSelectbox > div > div,
-    .stTextArea > div > div > textarea {{
-        background-color: var(--input-bg) !important;
-        color: var(--text-primary) !important;
-        border: 1px solid var(--input-border) !important;
-    }}
-    
-    .stTextInput > div > div > input:focus,
-    .stNumberInput > div > div > input:focus,
-    .stSelectbox > div > div:focus,
-    .stTextArea > div > div > textarea:focus {{
-        border-color: var(--input-focus) !important;
-        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1) !important;
-    }}
-    
-    /* Buttons */
-    .stButton > button {{
-        background-color: var(--color-primary);
-        color: var(--text-inverse);
-        border: none;
-        transition: all 0.2s ease;
-    }}
-    
-    .stButton > button:hover {{
-        background-color: var(--color-primary-dark);
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-    }}
-    
-    /* Badges & Labels */
-    .stMetric {{
-        background-color: var(--bg-card);
-        border: 1px solid var(--border-primary);
-        border-radius: 8px;
-        padding: 12px;
-    }}
-    
-    /* Expanders */
-    .streamlit-expanderHeader {{
-        background-color: var(--bg-secondary);
-        color: var(--text-primary);
-    }}
-    
-    /* Dividers */
-    .divider {{
-        background-color: var(--border-primary) !important;
-    }}
-    
-    /* Tables */
-    .dataframe {{
-        background-color: var(--bg-card) !important;
-        color: var(--text-primary) !important;
-    }}
-    
-    .dataframe tbody tr:hover {{
-        background-color: var(--hover-bg) !important;
-    }}
-    
-    /* Custom Cards */
-    .theme-card {{
-        background: var(--bg-card);
-        border: 1px solid var(--border-primary);
-        border-radius: 8px;
-        padding: 16px;
-        box-shadow: 0 2px 8px var(--card-shadow);
-        color: var(--text-primary);
-    }}
-    
-    .theme-card:hover {{
-        border-color: var(--color-primary);
-        box-shadow: 0 4px 12px var(--card-shadow);
-    }}
-    
-    .theme-badge {{
-        background-color: var(--bg-secondary);
-        color: var(--text-primary);
-        padding: 4px 12px;
-        border-radius: 12px;
-        border: 1px solid var(--border-primary);
-        font-size: 0.85em;
-        font-weight: 500;
-    }}
-    
-    .theme-badge-success {{
-        background-color: var(--color-success);
-        color: white;
-        border: none;
-    }}
-    
-    .theme-badge-warning {{
-        background-color: var(--color-warning);
-        color: white;
-        border: none;
-    }}
-    
-    .theme-badge-error {{
-        background-color: var(--color-error);
-        color: white;
-        border: none;
-    }}
-    
-    /* Info/Success/Error Messages */
-    .stAlert {{
-        border-left: 4px solid var(--color-primary);
-        background-color: var(--bg-card);
-        color: var(--text-primary);
-    }}
-    
-    /* Login Page Theme Adaptive */
-    .login-container {{
-        background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
-        color: white;
-    }}
-    
-    .login-title {{
-        color: white;
-    }}
-    
-    .login-subtitle {{
-        color: rgba(255, 255, 255, 0.9);
-    }}
-    
-    /* Product/Order Cards */
-    .order-card {{
-        background: var(--bg-card);
-        border: 1px solid var(--border-primary);
-        border-radius: 8px;
-        padding: 12px;
-        transition: all 0.2s ease;
-        color: var(--text-primary);
-    }}
-    
-    .order-card:hover {{
-        border-color: var(--color-primary);
-        box-shadow: 0 4px 6px var(--card-shadow);
-    }}
-    
-    /* Container Visual */
-    .container-visual {{
-        background: var(--bg-card);
-        border: 2px solid var(--color-primary);
-        border-radius: 8px;
-        padding: 15px;
-        margin: 10px 0;
-        color: var(--text-primary);
-    }}
-    
-    .container-progress {{
-        height: 40px;
-        background: var(--bg-secondary);
-        border-radius: 5px;
-        overflow: hidden;
-        position: relative;
-    }}
-    
-    .container-fill {{
-        height: 100%;
-        background: linear-gradient(90deg, var(--color-success) 0%, var(--color-primary) 100%);
-        transition: width 0.3s ease;
-    }}
-    
-    /* WIP Card */
-    .wip-card {{
-        background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
-        padding: 1.5rem;
-        border-radius: 10px;
-        color: white;
-        text-align: center;
-    }}
-    
-    .finished-card {{
-        background: linear-gradient(135deg, var(--color-success) 0%, #059669 100%);
-        padding: 1.5rem;
-        border-radius: 10px;
-        color: white;
-        text-align: center;
-    }}
-    
-    .shipping-card {{
-        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-        padding: 1.5rem;
-        border-radius: 10px;
-        color: white;
-        text-align: center;
-    }}
-    
-    /* User Info Badge */
-    .user-info-badge {{
-        background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
-        color: white;
-        padding: 8px 15px;
-        border-radius: 20px;
-        font-size: 0.9rem;
-        display: inline-block;
-        margin: 5px 0;
-    }}
-    
-    /* Caption & Small Text */
-    .stCaption {{
-        color: var(--text-secondary) !important;
-    }}
-    
-    .stHelp {{
-        color: var(--text-tertiary) !important;
-    }}
-    
-    /* Links */
-    a {{
-        color: var(--color-primary) !important;
-    }}
-    
-    a:hover {{
-        color: var(--color-primary-dark) !important;
-    }}
-    
-    /* Scrollbar */
-    ::-webkit-scrollbar {{
-        width: 8px;
-        height: 8px;
-    }}
-    
-    ::-webkit-scrollbar-track {{
-        background: var(--bg-secondary);
-    }}
-    
-    ::-webkit-scrollbar-thumb {{
-        background: var(--border-secondary);
-        border-radius: 4px;
-    }}
-    
-    ::-webkit-scrollbar-thumb:hover {{
-        background: var(--color-primary);
-    }}
-    </style>
-    """
-    
-    st.markdown(css, unsafe_allow_html=True)
-    
 # ===== KONFIGURASI DATABASE =====
 DATABASE_PATH = "ppic_data.json"
 BUYER_DB_PATH = "buyers.json"
@@ -486,7 +99,7 @@ def check_permission(required_role):
     
     # Mandor: Hanya Progress
     elif user_role == "mandor":
-        return required_role in ["Progress","Tracking"]
+        return required_role in ["Dashboard","Progress","Tracking","Absensi"]
     
     # Procurement: Database, Input, Procurement
     elif user_role == "admin":
@@ -512,107 +125,151 @@ def get_role_display_name(role):
 def show_login_page():
     st.markdown("""
     <style>
-    /* Remove all container backgrounds */
+    /* Clean background */
     .main {
-        background-color: transparent;
+        background-color: #F8F9FA;
     }
     
-    .login-container {
-        max-width: 500px;
-        margin: 100px auto;
+    /* Simple centered card */
+    .login-card {
+        max-width: 420px;
+        margin: 80px auto;
         padding: 40px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 15px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     }
     
+    /* Simple title */
     .login-title {
-        color: white;
+        color: #1F2937;
         text-align: center;
-        font-size: 2.5rem;
-        margin-bottom: 10px;
-        font-weight: bold;
+        font-size: 1.8rem;
+        margin-bottom: 8px;
+        font-weight: 600;
     }
     
     .login-subtitle {
-        color: #E0E7FF;
+        color: #6B7280;
         text-align: center;
-        font-size: 1.1rem;
-        margin-bottom: 30px;
+        font-size: 0.95rem;
+        margin-bottom: 35px;
     }
     
-    /* Style input fields to match theme - NO WHITE BACKGROUND */
+    /* Input fields - simple and clean */
     .stTextInput > div > div > input {
-        background-color: rgba(255, 255, 255, 0.1) !important;
-        border: 1px solid rgba(255, 255, 255, 0.3) !important;
+        background-color: #F9FAFB !important;
+        border: 1.5px solid #E5E7EB !important;
         border-radius: 8px !important;
-        padding: 12px !important;
-        font-size: 1rem !important;
-        color: white !important;
-    }
-    
-    .stTextInput > div > div > input::placeholder {
-        color: rgba(255, 255, 255, 0.6) !important;
+        padding: 11px 14px !important;
+        font-size: 0.95rem !important;
+        color: #1F2937 !important;
+        transition: all 0.2s ease;
     }
     
     .stTextInput > div > div > input:focus {
-        border-color: rgba(255, 255, 255, 0.8) !important;
-        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1) !important;
+        border-color: #3B82F6 !important;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+        background-color: white !important;
     }
     
-    /* Hide labels in login form */
-    .login-container label {
-        color: white !important;
+    .stTextInput > div > div > input::placeholder {
+        color: #9CA3AF !important;
+    }
+    
+    /* Labels */
+    .stTextInput > label {
+        color: #374151 !important;
         font-weight: 500 !important;
-        margin-bottom: 5px !important;
+        font-size: 0.9rem !important;
+        margin-bottom: 6px !important;
     }
     
+    /* Login button */
     .stButton button {
-        background: white !important;
-        color: #667eea !important;
-        font-weight: bold !important;
-        font-size: 1.1rem !important;
-        padding: 12px !important;
+        background: #3B82F6 !important;
+        color: white !important;
+        font-weight: 600 !important;
+        font-size: 0.95rem !important;
+        padding: 11px !important;
         border-radius: 8px !important;
         border: none !important;
         width: 100% !important;
-        margin-top: 10px !important;
+        margin-top: 8px !important;
+        transition: all 0.2s ease !important;
     }
     
     .stButton button:hover {
-        background: #F3F4F6 !important;
-        color: #5568D3 !important;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        background: #2563EB !important;
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        transform: translateY(-1px);
     }
     
-    .default-credentials {
-        background: rgba(255, 255, 255, 0.1);
-        padding: 15px;
+    /* Credentials info box */
+    .credentials-box {
+        background: #F9FAFB;
+        border: 1px solid #E5E7EB;
         border-radius: 8px;
-        margin-top: 20px;
-        color: white;
+        padding: 16px;
+        margin-top: 24px;
+        font-size: 0.85rem;
+    }
+    
+    .credentials-box h4 {
+        color: #374151;
+        font-size: 0.9rem;
+        margin: 0 0 10px 0;
+        font-weight: 600;
+    }
+    
+    .credentials-box div {
+        color: #6B7280;
+        line-height: 1.6;
+        margin: 4px 0;
+    }
+    
+    .credentials-box strong {
+        color: #1F2937;
+        font-weight: 600;
+    }
+    
+    /* Alerts */
+    .stAlert {
+        border-radius: 8px;
+        border: none;
         font-size: 0.9rem;
     }
     
-    .default-credentials h4 {
-        color: white;
-        margin-bottom: 10px;
+    /* Remove extra padding */
+    .block-container {
+        padding-top: 2rem !important;
     }
     </style>
     """, unsafe_allow_html=True)
     
+    # Simple centered layout
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
-        st.markdown('<h1 class="login-title">🏭 PPIC-DSS PT JAVA CONNECTION</h1>', unsafe_allow_html=True)
+        # Header
+        st.markdown('<h1 class="login-title">🏭 PT JAVA CONNECTION</h1>', unsafe_allow_html=True)
         st.markdown('<p class="login-subtitle">Sistem Pencatatan dan Perencanaan Terintegrasi</p>', unsafe_allow_html=True)
         
+        # Login form
         with st.form("login_form"):
-            username = st.text_input("👤 Username", placeholder="Masukkan username", key="login_username")
-            password = st.text_input("🔒 Password", type="password", placeholder="Masukkan password", key="login_password")
+            username = st.text_input(
+                "Username", 
+                placeholder="Masukkan username",
+                key="login_username"
+            )
+            password = st.text_input(
+                "Password", 
+                type="password",
+                placeholder="Masukkan password",
+                key="login_password"
+            )
             
-            submit = st.form_submit_button("🚀 LOGIN", use_container_width=True)
+            submit = st.form_submit_button("Login", use_container_width=True)
             
             if submit:
                 if username and password:
@@ -627,17 +284,18 @@ def show_login_page():
                         st.success(f"✅ Login berhasil! Selamat datang, {name}")
                         st.rerun()
                     else:
-                        st.error("❌ Username atau password salah!")
+                        st.error("❌ Username atau password salah")
                 else:
-                    st.warning("⚠️ Harap isi username dan password!")
+                    st.warning("⚠️ Harap isi username dan password")
         
+        # Credentials info
         st.markdown("""
-        <div class="default-credentials">
-            <h4>🔑 Default Login Credentials:</h4>
-            <strong>Owner:</strong> owner / owner123 (Dashboard only)<br>
-            <strong>Mandor:</strong> mandor / mandor123 (Progress only)<br>
-            <strong>Procurement:</strong> procurement / procurement123 (Database, Input, Procurement)<br>
-            <strong>Admin:</strong> admin / admin123 (Full Access)
+        <div class="credentials-box">
+            <h4>🔑 Default Login Credentials</h4>
+            <div><strong>Owner:</strong> owner / owner123</div>
+            <div><strong>Mandor:</strong> mandor / mandor123</div>
+            <div><strong>Procurement:</strong> procurement / procurement123</div>
+            <div><strong>Admin:</strong> admin / admin123</div>
         </div>
         """, unsafe_allow_html=True)
         
@@ -670,139 +328,121 @@ CONTAINER_TYPES = {
 
 # ===== CSS RESPONSIVE & COMPACT =====
 def inject_responsive_css():
-    """Inject responsive and theme-aware CSS"""
-    theme = get_theme()
-    
-    st.markdown(f"""
+    st.markdown("""
     <style>
-    .block-container {{
+    .block-container {
         padding-top: 3rem !important;
         padding-bottom: 1rem !important;
-        background-color: {theme['bg_primary']};
-    }}
+    }
     
-    h1, h2, h3 {{
+    h1, h2, h3 {
         margin-top: 0.5rem !important;
         margin-bottom: 0.5rem !important;
-        color: {theme['text_primary']} !important;
-    }}
+    }
     
-    [data-testid="stButton"] {{
+    [data-testid="stButton"] {
         margin-top: 0 !important;
         margin-bottom: 0.5rem !important;
-    }}
+    }
     
-    .stNumberInput, .stTextInput, .stSelectbox, .stDateInput {{
+    .stNumberInput, .stTextInput, .stSelectbox, .stDateInput {
         margin-bottom: 0.3rem !important;
-    }}
+    }
     
-    div[data-testid="column"] {{
+    div[data-testid="column"] {
         padding: 0 0.5rem !important;
-    }}
+    }
     
-    input, select, textarea {{
-        background-color: {theme['input_bg']} !important;
-        color: {theme['text_primary']} !important;
-        border-color: {theme['input_border']} !important;
-    }}
+    input, select, textarea {
+        tab-index: auto !important;
+    }
     
-    input:focus, select:focus, textarea:focus {{
-        border-color: {theme['input_focus']} !important;
-        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1) !important;
-    }}
-    
-    input::placeholder {{
-        color: {theme['text_tertiary']} !important;
-    }}
-    
-    @media (max-width: 767px) {{
-        [data-testid="stSidebar"] {{
+    @media (max-width: 767px) {
+        [data-testid="stSidebar"] {
             position: fixed;
             z-index: 999;
             width: 80vw !important;
-            background-color: {theme['bg_secondary']};
-        }}
-        .main .block-container {{
+        }
+        .main .block-container {
             padding: 0.5rem 0.3rem !important;
-        }}
-        h1 {{ font-size: 1.3rem !important; }}
-        h2 {{ font-size: 1.1rem !important; }}
-        .stButton button {{ width: 100% !important; }}
-    }}
+        }
+        h1 { font-size: 1.3rem !important; }
+        h2 { font-size: 1.1rem !important; }
+        .stButton button { width: 100% !important; }
+    }
     
-    .recent-orders-container {{
+    .recent-orders-container {
         max-height: 400px;
         overflow-y: auto;
-        border: 1px solid {theme['border_primary']};
+        border: 1px solid #374151;
         border-radius: 5px;
         padding: 10px;
-        background-color: {theme['bg_card']};
-    }}
+    }
     
-    .wip-card {{
+    .wip-card {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         padding: 1.5rem;
         border-radius: 10px;
         color: white;
         text-align: center;
-    }}
+    }
     
-    .finished-card {{
+    .finished-card {
         background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
         padding: 1.5rem;
         border-radius: 10px;
         color: white;
         text-align: center;
-    }}
+    }
     
-    .shipping-card {{
+    .shipping-card {
         background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
         padding: 1.5rem;
         border-radius: 10px;
         color: white;
         text-align: center;
-    }}
+    }
     
-    .container-visual {{
-        background: {theme['bg_card']};
+    .container-visual {
+        background: #1F2937;
         border: 2px solid #3B82F6;
         border-radius: 8px;
         padding: 15px;
         margin: 10px 0;
-    }}
+    }
     
-    .container-progress {{
+    .container-progress {
         height: 40px;
-        background: {theme['bg_secondary']};
+        background: #374151;
         border-radius: 5px;
         overflow: hidden;
         position: relative;
-    }}
+    }
     
-    .container-fill {{
+    .container-fill {
         height: 100%;
         background: linear-gradient(90deg, #10B981 0%, #3B82F6 100%);
         transition: width 0.3s ease;
-    }}
+    }
     
-    .knockdown-piece {{
-        background: {theme['bg_secondary']};
-        border: 1px solid {theme['border_primary']};
+    .knockdown-piece {
+        background: #1F2937;
+        border: 1px solid #3B82F6;
         border-radius: 8px;
         padding: 12px;
         margin: 8px 0;
-    }}
+    }
     
-    .piece-badge {{
+    .piece-badge {
         background: #3B82F6;
         color: white;
         padding: 4px 10px;
         border-radius: 12px;
         font-size: 0.85em;
         font-weight: bold;
-    }}
+    }
     
-    .user-info-badge {{
+    .user-info-badge {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
         padding: 8px 15px;
@@ -810,78 +450,42 @@ def inject_responsive_css():
         font-size: 0.9rem;
         display: inline-block;
         margin: 5px 0;
-    }}
+    }
     
-    .order-card {{
-        background: {theme['bg_card']};
-        border: 1px solid {theme['border_primary']};
+    .order-card {
+        background: #1F2937;
+        border: 1px solid #374151;
         border-radius: 8px;
         padding: 12px;
         margin: 8px 0;
         transition: all 0.2s ease;
-        color: {theme['text_primary']};
-    }}
+    }
     
-    .order-card:hover {{
+    .order-card:hover {
         border-color: #3B82F6;
         box-shadow: 0 4px 6px rgba(59, 130, 246, 0.2);
-    }}
-    
-    /* Responsive Typography */
-    @media (max-width: 600px) {{
-        h1 {{ font-size: 1.5rem; }}
-        h2 {{ font-size: 1.2rem; }}
-        h3 {{ font-size: 1rem; }}
-    }}
+    }
     </style>
     
     <script>
-    document.addEventListener('DOMContentLoaded', function() {{
+    document.addEventListener('DOMContentLoaded', function() {
         const inputs = document.querySelectorAll('input, select, textarea');
-        inputs.forEach((input, index) => {{
-            input.addEventListener('keypress', function(e) {{
-                if (e.key === 'Enter') {{
+        inputs.forEach((input, index) => {
+            input.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
                     e.preventDefault();
                     const nextInput = inputs[index + 1];
-                    if (nextInput) {{
+                    if (nextInput) {
                         nextInput.focus();
-                    }}
-                }}
-            }});
-        }});
-    }});
+                    }
+                }
+            });
+        });
+    });
     </script>
     """, unsafe_allow_html=True)
 
-def get_status_color(status):
-    """Get theme-aware color for status"""
-    theme = get_theme()
-    colors = {
-        "success": theme["success"],
-        "warning": theme["warning"],
-        "error": theme["error"],
-        "info": theme["info"]
-    }
-    return colors.get(status, theme["primary"])
-
-def get_card_style(highlight=False):
-    """Get theme-aware card styling"""
-    theme = get_theme()
-    if highlight:
-        return f"background: {theme['bg_secondary']}; border: 2px solid {theme['primary']}; border-radius: 8px; padding: 15px;"
-    return f"background: {theme['bg_card']}; border: 1px solid {theme['border_primary']}; border-radius: 8px; padding: 15px;"
-
-def get_metric_style(label, value, unit=""):
-    """Theme-aware metric styling"""
-    theme = get_theme()
-    return f"""
-    <div style="background: {theme['bg_card']}; padding: 16px; border-radius: 10px; border-left: 4px solid {theme['primary']}; text-align: center;">
-        <p style="margin: 0; color: {theme['text_secondary']}; font-size: 0.9em; font-weight: 500;">{label}</p>
-        <h2 style="margin: 8px 0; color: {theme['text_primary']}; font-size: 2em; font-weight: bold;">{value}</h2>
-        <p style="margin: 4px 0; color: {theme['text_tertiary']}; font-size: 0.8em;">{unit}</p>
-    </div>
-    """
-
+inject_responsive_css()
 # ===== FUNGSI DATABASE - ENHANCED PRODUCTS =====
 def load_data():
     if os.path.exists(DATABASE_PATH):
@@ -1459,9 +1063,6 @@ def save_suppliers(suppliers):
     except:
         return False
 
-# ===== APPLY THEME AND CSS =====
-apply_dynamic_theme()  # ✅ Dipindahkan ke sini
-inject_responsive_css()  # ✅ Dipindahkan ke sini
 
 # ===== INITIALIZATION =====
 if "logged_in" not in st.session_state:
@@ -1497,7 +1098,7 @@ if "knockdown_pieces" not in st.session_state:
     st.session_state["knockdown_pieces"] = []
 
 # ===== SIDEBAR MENU =====
-st.sidebar.title("🏭 PPIC-DSS MENU")
+st.sidebar.title("🏭 PT JAVA CONNECTION")
 
 user_name = st.session_state.get("user_name", "User")
 user_role = st.session_state.get("user_role", "")
@@ -1506,7 +1107,6 @@ role_display = get_role_display_name(user_role)
 st.sidebar.markdown(f"""
 <div class="user-info-badge">
     {role_display}<br>
-    <small>{user_name}</small>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1578,7 +1178,7 @@ if st.session_state["menu"] == "Dashboard":
 
         st.markdown("---")
 
-        # ===== PRODUCTION OVERVIEW =====
+        # ===== PRODUCTION OVERVIEW - SIMPLE CARDS =====
         st.markdown("### 📦 Production Overview")
 
         # Calculate all metrics
@@ -1610,7 +1210,7 @@ if st.session_state["menu"] == "Dashboard":
             except:
                 pass
 
-        # Determine storage status color
+        # Storage status color
         if storage_percentage > 90:
             bar_color = "#EF4444"
             status_text = "CRITICAL"
@@ -1624,78 +1224,43 @@ if st.session_state["menu"] == "Dashboard":
             status_text = "NORMAL"
             status_icon = "✅"
 
-        # ROW 1: 3 Cards
-        col1, col2, col3 = st.columns([2, 1, 1])
+        # Simple 3-column layout
+        col1, col2, col3 = st.columns(3)
 
+        # Storage Card
         with col1:
-            st.markdown(
-                f'<div style="background: #1e293b; padding: 22px; border-radius: 12px; border-left: 4px solid {bar_color}; box-shadow: 0 2px 8px rgba(0,0,0,0.3); height: 230px; overflow: hidden;">'
-                f'<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">'
-                f'<h3 style="color: white; margin: 0; font-size: 1em; white-space: nowrap;">📦 Storage Capacity</h3>'
-                f'<span style="background: {bar_color}; color: white; padding: 5px 12px; border-radius: 16px; font-size: 0.75em; font-weight: bold; white-space: nowrap;">{status_icon} {status_text}</span>'
-                f'</div>'
-                f'<div style="background: #0f172a; height: 38px; border-radius: 19px; overflow: hidden; margin: 14px 0;">'
-                f'<div style="width: {min(storage_percentage, 100):.1f}%; height: 100%; background: {bar_color}; display: flex; align-items: center; justify-content: center; transition: width 0.5s ease;">'
-                f'<span style="color: white; font-weight: bold; font-size: 1em;">{storage_percentage:.1f}%</span>'
-                f'</div></div>'
-                f'<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px;">'
-                f'<div style="background: rgba(59, 130, 246, 0.15); padding: 11px; border-radius: 8px; border-left: 3px solid #3B82F6; text-align: center;">'
-                f'<p style="margin: 0; color: #93c5fd; font-size: 0.75em; font-weight: 500;">Used</p>'
-                f'<p style="margin: 4px 0 0 0; color: white; font-weight: bold; font-size: 1.15em;">{storage_used_m2:.1f}</p>'
-                f'<p style="margin: 2px 0 0 0; color: #60a5fa; font-size: 0.7em;">m²</p>'
-                f'</div>'
-                f'<div style="background: rgba(59, 130, 246, 0.15); padding: 11px; border-radius: 8px; border-left: 3px solid #3B82F6; text-align: center;">'
-                f'<p style="margin: 0; color: #93c5fd; font-size: 0.75em; font-weight: 500;">Available</p>'
-                f'<p style="margin: 4px 0 0 0; color: white; font-weight: bold; font-size: 1.15em;">{storage_available:.1f}</p>'
-                f'<p style="margin: 2px 0 0 0; color: #60a5fa; font-size: 0.7em;">m²</p>'
-                f'</div>'
-                f'<div style="background: rgba(59, 130, 246, 0.15); padding: 11px; border-radius: 8px; border-left: 3px solid #3B82F6; text-align: center;">'
-                f'<p style="margin: 0; color: #93c5fd; font-size: 0.75em; font-weight: 500;">Total</p>'
-                f'<p style="margin: 4px 0 0 0; color: white; font-weight: bold; font-size: 1.15em;">{TOTAL_STORAGE_AREA_M2:.0f}</p>'
-                f'<p style="margin: 2px 0 0 0; color: #60a5fa; font-size: 0.7em;">m²</p>'
-                f'</div></div></div>',
-                unsafe_allow_html=True
-            )
+            with st.container():
+                st.markdown(f"#### 📦 Storage Capacity")
+                st.markdown(f"**Status:** {status_icon} {status_text}")
+                st.progress(storage_percentage / 100)
+                st.metric("Usage", f"{storage_percentage:.1f}%")
+                
+                subcol1, subcol2, subcol3 = st.columns(3)
+                subcol1.metric("Used", f"{storage_used_m2:.1f} m²")
+                subcol2.metric("Available", f"{storage_available:.1f} m²")
+                subcol3.metric("Total", f"{TOTAL_STORAGE_AREA_M2:.0f} m²")
 
+        # WIP Card
         with col2:
-            st.markdown(
-                f'<div style="background: #1e293b; padding: 20px; border-radius: 12px; border-left: 4px solid #6366f1; box-shadow: 0 2px 8px rgba(0,0,0,0.3); height: 230px; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between;">'
-                f'<div style="text-align: center;"><h4 style="color: rgba(255,255,255,0.9); margin: 0; font-size: 0.9em;">🏭 WIP</h4></div>'
-                f'<div style="text-align: center;">'
-                f'<h1 style="color: white; margin: 10px 0; font-size: 2.8em; font-weight: bold; line-height: 1;">{wip_qty:,}</h1>'
-                f'<p style="color: rgba(255,255,255,0.8); margin: 0; font-size: 0.85em;">pcs</p></div>'
-                f'<div style="background: rgba(99, 102, 241, 0.15); padding: 9px; border-radius: 8px;">'
-                f'<div style="display: flex; justify-content: space-between; margin: 3px 0;">'
-                f'<span style="color: rgba(255,255,255,0.7); font-size: 0.75em;">Volume:</span>'
-                f'<span style="color: white; font-size: 0.75em; font-weight: 500;">{wip_cbm:.4f} m³</span></div>'
-                f'<div style="display: flex; justify-content: space-between; margin: 3px 0;">'
-                f'<span style="color: rgba(255,255,255,0.7); font-size: 0.75em;">Floor:</span>'
-                f'<span style="color: white; font-size: 0.75em; font-weight: 500;">{wip_floor:.2f} m²</span></div>'
-                f'</div></div>',
-                unsafe_allow_html=True
-            )
+            with st.container():
+                st.markdown("#### 🏭 Work in Progress")
+                st.metric("Quantity", f"{wip_qty:,} pcs", label_visibility="collapsed")
+                st.markdown(f"**Quantity:** {wip_qty:,} pcs")
+                st.caption(f"📦 Volume: {wip_cbm:.4f} m³")
+                st.caption(f"📐 Floor: {wip_floor:.2f} m²")
 
+        # Finished Card
         with col3:
-            st.markdown(
-                f'<div style="background: #1e293b; padding: 20px; border-radius: 12px; border-left: 4px solid #8b5cf6; box-shadow: 0 2px 8px rgba(0,0,0,0.3); height: 230px; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between;">'
-                f'<div style="text-align: center;"><h4 style="color: rgba(255,255,255,0.9); margin: 0; font-size: 0.9em;">📦 Finished</h4></div>'
-                f'<div style="text-align: center;">'
-                f'<h1 style="color: white; margin: 10px 0; font-size: 2.8em; font-weight: bold; line-height: 1;">{finished_qty:,}</h1>'
-                f'<p style="color: rgba(255,255,255,0.8); margin: 0; font-size: 0.85em;">pcs</p></div>'
-                f'<div style="background: rgba(139, 92, 246, 0.15); padding: 9px; border-radius: 8px;">'
-                f'<div style="display: flex; justify-content: space-between; margin: 3px 0;">'
-                f'<span style="color: rgba(255,255,255,0.7); font-size: 0.75em;">Volume:</span>'
-                f'<span style="color: white; font-size: 0.75em; font-weight: 500;">{finished_cbm:.4f} m³</span></div>'
-                f'<div style="display: flex; justify-content: space-between; margin: 3px 0;">'
-                f'<span style="color: rgba(255,255,255,0.7); font-size: 0.75em;">Floor:</span>'
-                f'<span style="color: white; font-size: 0.75em; font-weight: 500;">{finished_floor:.2f} m²</span></div>'
-                f'</div></div>',
-                unsafe_allow_html=True
-            )
+            with st.container():
+                st.markdown("#### ✅ Finished Goods")
+                st.metric("Quantity", f"{finished_qty:,} pcs", label_visibility="collapsed")
+                st.markdown(f"**Quantity:** {finished_qty:,} pcs")
+                st.caption(f"📦 Volume: {finished_cbm:.4f} m³")
+                st.caption(f"📐 Floor: {finished_floor:.2f} m²")
 
-        st.markdown("<div style='margin: 24px 0;'></div>", unsafe_allow_html=True)
+        st.markdown("---")
 
-        # ===== OVERTIME ANALYTICS =====
+        # ===== OVERTIME ANALYTICS - SIMPLE LAYOUT =====
         st.markdown("### ⏰ Overtime Analytics")
 
         attendance_list = st.session_state.get("attendance", [])
@@ -1718,66 +1283,35 @@ if st.session_state["menu"] == "Dashboard":
         with col_info:
             workers_count = ot_metrics['total_workers']
             ot_workers = ot_metrics['workers_with_overtime']
-            if workers_count > 0:
-                st.info(f"👷 **{ot_workers}** dari **{workers_count}** pekerja melakukan overtime bulan ini")
-            else:
-                st.info("👷 Belum ada data absensi bulan ini")
 
-        # 5 Overtime Cards - RED BORDER + BIGGER FONTS
+        # Simple 5-column metrics
         col1, col2, col3, col4, col5 = st.columns(5)
         HOURLY_RATE = 10840
 
-        # Calculate if there's overtime to determine border color
-        has_overtime = ot_metrics['total_overtime_hours'] > 0
-        ot_border_color = "#EF4444" if has_overtime else "#3B82F6"  # RED if overtime, BLUE if not
+        with col1:
+            st.metric(
+                "Total Overtime",
+                f"{ot_metrics['total_overtime_hours']:.1f} jam",
+                delta=None if ot_metrics['total_overtime_hours'] == 0 else f"⚠️ Active"
+            )
+            st.caption(f"{months[selected_month_idx-1]}")
 
-        overtime_data = [
-            ("Total Overtime", f"{ot_metrics['total_overtime_hours']:.1f}", "jam", f"{months[selected_month_idx-1]}"),
-            ("Avg OT/Worker", f"{ot_metrics['total_overtime_hours'] / max(ot_metrics['total_workers'], 1):.1f}", "jam", "per pekerja"),
-            ("Avg OT Rate", f"{ot_metrics['avg_overtime_rate']:.1f}%", "rate", "dari jam kerja"),
-            ("Total OT Cost", f"Rp {ot_metrics['total_overtime_cost']:,.0f}", "biaya", f"@ Rp {HOURLY_RATE:,}/jam"),
-            ("Cost Increase", f"+{ot_metrics['cost_increase_pct']:.1f}%", "increase", "vs regular")
-        ]
+        with col2:
+            avg_ot = ot_metrics['total_overtime_hours'] / max(ot_metrics['total_workers'], 1)
+            st.metric("Avg OT/Worker", f"{avg_ot:.1f} jam")
+            st.caption("per pekerja")
 
-        for col, (title, value, unit, subtitle) in zip([col1, col2, col3, col4, col5], overtime_data):
-            with col:
-                # Adjust font size for long values
-                value_size = "1.6em" if len(str(value)) > 10 else "2.2em"
-                
-                st.markdown(
-                    f'<div style="background: #1e293b; padding: 16px; border-radius: 10px; border-left: 4px solid {ot_border_color}; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,0.2); height: 140px; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between;">'
-                    f'<p style="margin: 0; color: rgba(255,255,255,0.7); font-size: 0.75em; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{title}</p>'
-                    f'<h2 style="margin: 8px 0; color: white; font-size: {value_size}; font-weight: bold; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{value}</h2>'
-                    f'<div><p style="margin: 0; color: {"#ef4444" if has_overtime else "#60a5fa"}; font-size: 0.8em; font-weight: 500;">{unit}</p>'
-                    f'<p style="margin: 4px 0 0 0; color: rgba(255,255,255,0.5); font-size: 0.7em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{subtitle}</p></div></div>',
-                    unsafe_allow_html=True
-                )
+        with col3:
+            st.metric("Avg OT Rate", f"{ot_metrics['avg_overtime_rate']:.1f}%")
+            st.caption("dari jam kerja")
 
-        # Top 3 Workers - RED BORDER + BIGGER FONTS
-        if ot_metrics['top_overtime_workers']:
-            st.markdown("<div style='margin: 20px 0;'></div>", unsafe_allow_html=True)
-            st.markdown("#### 🏆 Top 3 Overtime Workers")
-            
-            col_top1, col_top2, col_top3 = st.columns(3)
-            medals = ["🥇", "🥈", "🥉"]
-            
-            for idx, (col, worker_data) in enumerate(zip([col_top1, col_top2, col_top3], ot_metrics['top_overtime_workers'])):
-                with col:
-                    st.markdown(
-                        f'<div style="background: #1e293b; padding: 16px; border-radius: 10px; border-left: 4px solid {ot_border_color}; box-shadow: 0 2px 6px rgba(0,0,0,0.2); height: 130px; overflow: hidden;">'
-                        f'<div style="display: flex; align-items: center; margin-bottom: 12px;">'
-                        f'<span style="font-size: 2em; margin-right: 12px; line-height: 1;">{medals[idx]}</span>'
-                        f'<div style="flex: 1; min-width: 0;"><p style="margin: 0; color: white; font-weight: bold; font-size: 0.95em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{worker_data["name"]}</p>'
-                        f'<p style="margin: 2px 0 0 0; color: #9CA3AF; font-size: 0.8em;">Rank #{idx + 1}</p></div></div>'
-                        f'<div style="background: rgba(239, 68, 68, 0.15); padding: 10px; border-radius: 6px;">'
-                        f'<div style="display: flex; justify-content: space-between; margin: 4px 0;">'
-                        f'<span style="color: #9CA3AF; font-size: 0.75em;">⏰ OT:</span>'
-                        f'<span style="color: white; font-size: 0.75em; font-weight: bold;">{worker_data["hours"]:.1f}h ({worker_data["rate"]:.1f}%)</span></div>'
-                        f'<div style="display: flex; justify-content: space-between; margin: 4px 0;">'
-                        f'<span style="color: #9CA3AF; font-size: 0.75em;">💰 Cost:</span>'
-                        f'<span style="color: #ef4444; font-size: 0.75em; font-weight: bold;">Rp {worker_data["cost"]:,.0f}</span></div></div></div>',
-                        unsafe_allow_html=True
-                    )
+        with col4:
+            st.metric("Total Cost", f"Rp {ot_metrics['total_overtime_cost']:,.0f}")
+            st.caption(f"@ Rp {HOURLY_RATE:,}/jam")
+
+        with col5:
+            st.metric("Cost Increase", f"+{ot_metrics['cost_increase_pct']:.1f}%")
+            st.caption("vs regular cost")
 
         st.markdown("---")
 
@@ -2292,7 +1826,7 @@ elif st.session_state["menu"] == "Absensi":
         # Tab untuk Absen Masuk / Pulang
         tab_masuk, tab_pulang = st.tabs(["🌅 ABSEN MASUK", "🌆 ABSEN PULANG"])
         
-        # ===== TAB ABSEN MASUK =====
+        # ===== TAB ABSEN MASUK WITH CONFIRMATION =====
         with tab_masuk:
             st.markdown("### 🌅 Absen Masuk (Check-In)")
             st.info("💡 Default: Semua hadir jam 08:00. Uncheck yang tidak masuk atau ubah jam yang telat.")
@@ -2376,68 +1910,180 @@ elif st.session_state["menu"] == "Absensi":
                         "position": worker_position,
                         "status": status,
                         "check_in": check_in,
-                        "check_out": existing.get("check_out", "-")  # Keep existing checkout
+                        "check_out": existing.get("check_out", "-")
                     }
                 
                 st.markdown("---")
                 
-                # Summary
+                # Summary with styling
                 hadir_count = sum(1 for d in masuk_data.values() if d["status"] == "Hadir")
-                st.success(f"✅ {hadir_count}/{len(filtered_workers)} pekerja hadir")
+                tidak_hadir = sum(1 for d in masuk_data.values() if d["status"] == "Tidak Hadir")
+                izin = sum(1 for d in masuk_data.values() if d["status"] == "Izin")
+                sakit = sum(1 for d in masuk_data.values() if d["status"] == "Sakit")
                 
-                # Save button
-                if st.button("💾 SIMPAN ABSEN MASUK", use_container_width=True, type="primary", key="save_masuk"):
-                    # Merge dengan data yang sudah ada
-                    if existing_attendance:
-                        # Update existing records
-                        for worker_id, data in masuk_data.items():
-                            if worker_id in existing_records:
-                                existing_records[worker_id].update({
-                                    "status": data["status"],
-                                    "check_in": data["check_in"]
-                                })
-                            else:
-                                existing_records[worker_id] = data
-                        
-                        # Update attendance record
-                        for i, att in enumerate(attendance_list):
-                            if att.get("date") == date_str:
-                                attendance_list[i]["records"] = existing_records
-                                # Recalculate stats
-                                attendance_list[i]["hadir"] = sum(1 for r in existing_records.values() if r["status"] == "Hadir")
-                                attendance_list[i]["tidak_hadir"] = sum(1 for r in existing_records.values() if r["status"] == "Tidak Hadir")
-                                attendance_list[i]["izin"] = sum(1 for r in existing_records.values() if r["status"] == "Izin")
-                                attendance_list[i]["sakit"] = sum(1 for r in existing_records.values() if r["status"] == "Sakit")
-                                break
-                    else:
-                        # Create new attendance
-                        new_attendance = {
-                            "date": date_str,
-                            "created_at": str(datetime.datetime.now()),
-                            "created_by": st.session_state.get("user_name", "Unknown"),
-                            "total_workers": len(workers),
-                            "hadir": sum(1 for d in masuk_data.values() if d["status"] == "Hadir"),
-                            "tidak_hadir": sum(1 for d in masuk_data.values() if d["status"] == "Tidak Hadir"),
-                            "izin": sum(1 for d in masuk_data.values() if d["status"] == "Izin"),
-                            "sakit": sum(1 for d in masuk_data.values() if d["status"] == "Sakit"),
-                            "overtime_hours": 0,
-                            "records": masuk_data
-                        }
-                        attendance_list.append(new_attendance)
+                st.markdown("""
+                <div style='background: white; border: 1px solid #E5E7EB; border-radius: 8px; padding: 20px; margin: 15px 0;'>
+                    <h4 style='color: #1F2937; margin: 0 0 15px 0;'>📊 Ringkasan Absensi</h4>
+                    <table style='width: 100%; font-size: 0.9rem;'>
+                        <tr>
+                            <td style='color: #6B7280; padding: 8px 0;'>✅ Hadir:</td>
+                            <td style='color: #10B981; font-weight: 600; text-align: right;'>{} pekerja</td>
+                        </tr>
+                        <tr>
+                            <td style='color: #6B7280; padding: 8px 0;'>❌ Tidak Hadir:</td>
+                            <td style='color: #EF4444; font-weight: 600; text-align: right;'>{} pekerja</td>
+                        </tr>
+                        <tr>
+                            <td style='color: #6B7280; padding: 8px 0;'>📝 Izin:</td>
+                            <td style='color: #3B82F6; font-weight: 600; text-align: right;'>{} pekerja</td>
+                        </tr>
+                        <tr>
+                            <td style='color: #6B7280; padding: 8px 0;'>🏥 Sakit:</td>
+                            <td style='color: #F59E0B; font-weight: 600; text-align: right;'>{} pekerja</td>
+                        </tr>
+                        <tr style='border-top: 2px solid #E5E7EB;'>
+                            <td style='color: #1F2937; padding: 12px 0 0 0; font-weight: 600;'>Total:</td>
+                            <td style='color: #1F2937; font-weight: 600; text-align: right; padding: 12px 0 0 0;'>{} pekerja</td>
+                        </tr>
+                    </table>
+                </div>
+                """.format(hadir_count, tidak_hadir, izin, sakit, len(filtered_workers)), unsafe_allow_html=True)
+                
+                # CONFIRMATION SYSTEM
+                if "confirm_save_masuk" not in st.session_state:
+                    st.session_state["confirm_save_masuk"] = False
+                
+                if st.session_state["confirm_save_masuk"]:
+                    # CONFIRMATION DIALOG
+                    st.markdown("""
+                    <div style='background: #FEF3C7; border: 2px solid #F59E0B; border-radius: 8px; padding: 20px; margin: 20px 0;'>
+                        <h3 style='color: #D97706; margin: 0 0 15px 0;'>⚠️ KONFIRMASI SIMPAN DATA</h3>
+                        <p style='color: #92400E; margin: 0 0 10px 0; font-size: 0.95rem;'>
+                            Anda akan menyimpan data absensi masuk dengan rincian:
+                        </p>
+                        <table style='width: 100%; font-size: 0.9rem; color: #92400E;'>
+                            <tr><td style='padding: 5px 0;'><strong>📅 Tanggal:</strong></td><td style='text-align: right;'>{}</td></tr>
+                            <tr><td style='padding: 5px 0;'><strong>👥 Total Pekerja:</strong></td><td style='text-align: right;'>{}</td></tr>
+                            <tr><td style='padding: 5px 0;'><strong>✅ Hadir:</strong></td><td style='text-align: right;'>{}</td></tr>
+                            <tr><td style='padding: 5px 0;'><strong>❌ Tidak Hadir:</strong></td><td style='text-align: right;'>{}</td></tr>
+                        </table>
+                        <p style='color: #92400E; margin: 15px 0 0 0; font-weight: 600;'>
+                            ⚠️ Pastikan semua data sudah benar sebelum menyimpan!
+                        </p>
+                    </div>
+                    """.format(date_str, len(filtered_workers), hadir_count, tidak_hadir), unsafe_allow_html=True)
                     
-                    st.session_state["attendance"] = attendance_list
-                    if save_attendance(attendance_list):
-                        st.success(f"✅ Absen masuk tanggal {date_str} berhasil disimpan!")
+                    col_conf1, col_conf2 = st.columns(2)
+                    
+                    with col_conf1:
+                        if st.button("✅ YA, SIMPAN SEKARANG", use_container_width=True, type="primary", key="confirm_yes_masuk"):
+                            with st.spinner("💾 Menyimpan data absensi..."):
+                                import time
+                                time.sleep(0.5)  # Brief pause for UX
+                                
+                                # Save logic
+                                if existing_attendance:
+                                    for worker_id, data in masuk_data.items():
+                                        if worker_id in existing_records:
+                                            existing_records[worker_id].update({
+                                                "status": data["status"],
+                                                "check_in": data["check_in"]
+                                            })
+                                        else:
+                                            existing_records[worker_id] = data
+                                    
+                                    for i, att in enumerate(attendance_list):
+                                        if att.get("date") == date_str:
+                                            attendance_list[i]["records"] = existing_records
+                                            attendance_list[i]["hadir"] = hadir_count
+                                            attendance_list[i]["tidak_hadir"] = tidak_hadir
+                                            attendance_list[i]["izin"] = izin
+                                            attendance_list[i]["sakit"] = sakit
+                                            break
+                                else:
+                                    new_attendance = {
+                                        "date": date_str,
+                                        "created_at": str(datetime.datetime.now()),
+                                        "created_by": st.session_state.get("user_name", "Unknown"),
+                                        "total_workers": len(workers),
+                                        "hadir": hadir_count,
+                                        "tidak_hadir": tidak_hadir,
+                                        "izin": izin,
+                                        "sakit": sakit,
+                                        "overtime_hours": 0,
+                                        "records": masuk_data
+                                    }
+                                    attendance_list.append(new_attendance)
+                                
+                                st.session_state["attendance"] = attendance_list
+                                
+                                if save_attendance(attendance_list):
+                                    # SUCCESS NOTIFICATION
+                                    st.markdown("""
+                                    <div style='background: #DCFCE7; border: 2px solid #22C55E; border-radius: 8px; padding: 25px; margin: 20px 0;'>
+                                        <h2 style='color: #16A34A; margin: 0 0 15px 0;'>✅ BERHASIL DISIMPAN!</h2>
+                                        <p style='color: #15803D; margin: 0 0 15px 0; font-size: 1rem;'>
+                                            Data absensi masuk telah tersimpan dengan sukses.
+                                        </p>
+                                        <table style='width: 100%; font-size: 0.95rem; color: #15803D;'>
+                                            <tr style='border-bottom: 1px solid #86EFAC;'>
+                                                <td style='padding: 10px 0;'><strong>📅 Tanggal:</strong></td>
+                                                <td style='text-align: right; padding: 10px 0;'>{}</td>
+                                            </tr>
+                                            <tr style='border-bottom: 1px solid #86EFAC;'>
+                                                <td style='padding: 10px 0;'><strong>👥 Total Pekerja:</strong></td>
+                                                <td style='text-align: right; padding: 10px 0;'>{} pekerja</td>
+                                            </tr>
+                                            <tr style='border-bottom: 1px solid #86EFAC;'>
+                                                <td style='padding: 10px 0;'><strong>✅ Hadir:</strong></td>
+                                                <td style='text-align: right; padding: 10px 0;'>{} pekerja</td>
+                                            </tr>
+                                            <tr style='border-bottom: 1px solid #86EFAC;'>
+                                                <td style='padding: 10px 0;'><strong>❌ Tidak Hadir:</strong></td>
+                                                <td style='text-align: right; padding: 10px 0;'>{} pekerja</td>
+                                            </tr>
+                                            <tr>
+                                                <td style='padding: 10px 0 0 0;'><strong>🕐 Disimpan pada:</strong></td>
+                                                <td style='text-align: right; padding: 10px 0 0 0;'>{}</td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                    """.format(
+                                        date_str,
+                                        len(filtered_workers),
+                                        hadir_count,
+                                        tidak_hadir,
+                                        datetime.datetime.now().strftime("%H:%M:%S")
+                                    ), unsafe_allow_html=True)
+                                    
+                                    st.balloons()
+                                    st.session_state["confirm_save_masuk"] = False
+                                    
+                                    # Auto refresh after 2 seconds
+                                    time.sleep(2)
+                                    st.rerun()
+                                else:
+                                    st.error("❌ Gagal menyimpan data! Silakan coba lagi.")
+                                    st.session_state["confirm_save_masuk"] = False
+                    
+                    with col_conf2:
+                        if st.button("❌ BATAL", use_container_width=True, type="secondary", key="confirm_no_masuk"):
+                            st.session_state["confirm_save_masuk"] = False
+                            st.info("Dibatalkan. Data tidak disimpan.")
+                            st.rerun()
+                else:
+                    # INITIAL SAVE BUTTON
+                    if st.button("💾 SIMPAN ABSEN MASUK", use_container_width=True, type="primary", key="save_masuk"):
+                        st.session_state["confirm_save_masuk"] = True
                         st.rerun()
         
-        # ===== TAB ABSEN PULANG =====
+        # ===== TAB ABSEN PULANG WITH CONFIRMATION =====
         with tab_pulang:
             st.markdown("### 🌆 Absen Pulang (Check-Out)")
             
-            # Check if masuk sudah di-input
             if not existing_attendance:
                 st.error("❌ Belum ada data absen masuk untuk tanggal ini!")
-                st.info("💡 Silakan input absen masuk terlebih dahulu di tab sebelah.")
+                st.info("💡 Silakan input absen masuk terlebih dahulu di tab 🌅 ABSEN MASUK")
                 st.stop()
             
             st.info("💡 Default: Semua pulang jam 16:00. Ubah jam untuk yang overtime.")
@@ -2517,42 +2163,157 @@ elif st.session_state["menu"] == "Absensi":
                 
                 st.markdown("---")
                 
-                # Summary
+                # Calculate summary
                 total_ot = sum(calculate_overtime_hours(existing_records.get(wid, {}).get("check_in", "08:00"), pulang_data[wid]["check_out"]) for wid in pulang_data.keys())
                 ot_workers = sum(1 for wid in pulang_data.keys() if calculate_overtime_hours(existing_records.get(wid, {}).get("check_in", "08:00"), pulang_data[wid]["check_out"]) > 0)
+                total_ot_cost = sum(calculate_overtime_cost(calculate_overtime_hours(existing_records.get(wid, {}).get("check_in", "08:00"), pulang_data[wid]["check_out"])) for wid in pulang_data.keys())
                 
-                col_sum1, col_sum2 = st.columns(2)
-                col_sum1.metric("⏰ Total Overtime", f"{total_ot:.1f} jam")
-                col_sum2.metric("👷 Pekerja Overtime", f"{ot_workers}/{len(workers_hadir)}")
+                # Summary box
+                st.markdown("""
+                <div style='background: white; border: 1px solid #E5E7EB; border-radius: 8px; padding: 20px; margin: 15px 0;'>
+                    <h4 style='color: #1F2937; margin: 0 0 15px 0;'>⏰ Ringkasan Overtime</h4>
+                    <table style='width: 100%; font-size: 0.9rem;'>
+                        <tr>
+                            <td style='color: #6B7280; padding: 8px 0;'>👷 Pekerja Hadir:</td>
+                            <td style='color: #1F2937; font-weight: 600; text-align: right;'>{} pekerja</td>
+                        </tr>
+                        <tr>
+                            <td style='color: #6B7280; padding: 8px 0;'>👷 Pekerja Overtime:</td>
+                            <td style='color: #F59E0B; font-weight: 600; text-align: right;'>{} pekerja</td>
+                        </tr>
+                        <tr>
+                            <td style='color: #6B7280; padding: 8px 0;'>⏰ Total Jam Overtime:</td>
+                            <td style='color: #F59E0B; font-weight: 600; text-align: right;'>{:.1f} jam</td>
+                        </tr>
+                        <tr style='border-top: 2px solid #E5E7EB;'>
+                            <td style='color: #1F2937; padding: 12px 0 0 0; font-weight: 600;'>💰 Total Biaya Overtime:</td>
+                            <td style='color: #EF4444; font-weight: 600; text-align: right; padding: 12px 0 0 0;'>Rp {:,.0f}</td>
+                        </tr>
+                    </table>
+                </div>
+                """.format(len(workers_hadir), ot_workers, total_ot, total_ot_cost), unsafe_allow_html=True)
                 
-                # Save button
-                if st.button("💾 SIMPAN ABSEN PULANG", use_container_width=True, type="primary", key="save_pulang"):
-                    # Update existing records
-                    for worker_id, data in pulang_data.items():
-                        if worker_id in existing_records:
-                            existing_records[worker_id]["check_out"] = data["check_out"]
+                # CONFIRMATION SYSTEM
+                if "confirm_save_pulang" not in st.session_state:
+                    st.session_state["confirm_save_pulang"] = False
+                
+                if st.session_state["confirm_save_pulang"]:
+                    # CONFIRMATION DIALOG
+                    st.markdown("""
+                    <div style='background: #FEF3C7; border: 2px solid #F59E0B; border-radius: 8px; padding: 20px; margin: 20px 0;'>
+                        <h3 style='color: #D97706; margin: 0 0 15px 0;'>⚠️ KONFIRMASI SIMPAN DATA</h3>
+                        <p style='color: #92400E; margin: 0 0 10px 0; font-size: 0.95rem;'>
+                            Anda akan menyimpan data absensi pulang dengan rincian:
+                        </p>
+                        <table style='width: 100%; font-size: 0.9rem; color: #92400E;'>
+                            <tr><td style='padding: 5px 0;'><strong>📅 Tanggal:</strong></td><td style='text-align: right;'>{}</td></tr>
+                            <tr><td style='padding: 5px 0;'><strong>👷 Pekerja Hadir:</strong></td><td style='text-align: right;'>{}</td></tr>
+                            <tr><td style='padding: 5px 0;'><strong>⏰ Total Overtime:</strong></td><td style='text-align: right;'>{:.1f} jam</td></tr>
+                            <tr><td style='padding: 5px 0;'><strong>👷 Pekerja Overtime:</strong></td><td style='text-align: right;'>{}</td></tr>
+                            <tr><td style='padding: 5px 0;'><strong>💰 Biaya Overtime:</strong></td><td style='text-align: right;'>Rp {:,.0f}</td></tr>
+                        </table>
+                        <p style='color: #92400E; margin: 15px 0 0 0; font-weight: 600;'>
+                            ⚠️ Pastikan semua jam pulang sudah benar!
+                        </p>
+                    </div>
+                    """.format(date_str, len(workers_hadir), total_ot, ot_workers, total_ot_cost), unsafe_allow_html=True)
                     
-                    # Recalculate overtime
-                    total_overtime_hours = 0
-                    for worker_id, record in existing_records.items():
-                        if record.get("status") == "Hadir":
-                            ot = calculate_overtime_hours(record.get("check_in", "08:00"), record.get("check_out", "16:00"))
-                            total_overtime_hours += ot
+                    col_conf1, col_conf2 = st.columns(2)
                     
-                    # Update attendance record
-                    for i, att in enumerate(attendance_list):
-                        if att.get("date") == date_str:
-                            attendance_list[i]["records"] = existing_records
-                            attendance_list[i]["overtime_hours"] = total_overtime_hours
-                            break
+                    with col_conf1:
+                        if st.button("✅ YA, SIMPAN SEKARANG", use_container_width=True, type="primary", key="confirm_yes_pulang"):
+                            with st.spinner("💾 Menyimpan data absensi pulang..."):
+                                import time
+                                time.sleep(0.5)
+                                
+                                # Update existing records
+                                for worker_id, data in pulang_data.items():
+                                    if worker_id in existing_records:
+                                        existing_records[worker_id]["check_out"] = data["check_out"]
+                                
+                                # Recalculate overtime
+                                total_overtime_hours = 0
+                                for worker_id, record in existing_records.items():
+                                    if record.get("status") == "Hadir":
+                                        ot = calculate_overtime_hours(record.get("check_in", "08:00"), record.get("check_out", "16:00"))
+                                        total_overtime_hours += ot
+                                
+                                # Update attendance record
+                                for i, att in enumerate(attendance_list):
+                                    if att.get("date") == date_str:
+                                        attendance_list[i]["records"] = existing_records
+                                        attendance_list[i]["overtime_hours"] = total_overtime_hours
+                                        break
+                                
+                                st.session_state["attendance"] = attendance_list
+                                
+                                if save_attendance(attendance_list):
+                                    # SUCCESS NOTIFICATION
+                                    st.markdown("""
+                                    <div style='background: #DCFCE7; border: 2px solid #22C55E; border-radius: 8px; padding: 25px; margin: 20px 0;'>
+                                        <h2 style='color: #16A34A; margin: 0 0 15px 0;'>✅ BERHASIL DISIMPAN!</h2>
+                                        <p style='color: #15803D; margin: 0 0 15px 0; font-size: 1rem;'>
+                                            Data absensi pulang telah tersimpan dengan sukses.
+                                        </p>
+                                        <table style='width: 100%; font-size: 0.95rem; color: #15803D;'>
+                                            <tr style='border-bottom: 1px solid #86EFAC;'>
+                                                <td style='padding: 10px 0;'><strong>📅 Tanggal:</strong></td>
+                                                <td style='text-align: right; padding: 10px 0;'>{}</td>
+                                            </tr>
+                                            <tr style='border-bottom: 1px solid #86EFAC;'>
+                                                <td style='padding: 10px 0;'><strong>👷 Pekerja Hadir:</strong></td>
+                                                <td style='text-align: right; padding: 10px 0;'>{} pekerja</td>
+                                            </tr>
+                                            <tr style='border-bottom: 1px solid #86EFAC;'>
+                                                <td style='padding: 10px 0;'><strong>⏰ Total Overtime:</strong></td>
+                                                <td style='text-align: right; padding: 10px 0;'>{:.1f} jam</td>
+                                            </tr>
+                                            <tr style='border-bottom: 1px solid #86EFAC;'>
+                                                <td style='padding: 10px 0;'><strong>👷 Pekerja Overtime:</strong></td>
+                                                <td style='text-align: right; padding: 10px 0;'>{} dari {} pekerja</td>
+                                            </tr>
+                                            <tr style='border-bottom: 1px solid #86EFAC;'>
+                                                <td style='padding: 10px 0;'><strong>💰 Total Biaya:</strong></td>
+                                                <td style='text-align: right; padding: 10px 0;'>Rp {:,.0f}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style='padding: 10px 0 0 0;'><strong>🕐 Disimpan pada:</strong></td>
+                                                <td style='text-align: right; padding: 10px 0 0 0;'>{}</td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                    """.format(
+                                        date_str,
+                                        len(workers_hadir),
+                                        total_overtime_hours,
+                                        ot_workers,
+                                        len(workers_hadir),
+                                        total_ot_cost,
+                                        datetime.datetime.now().strftime("%H:%M:%S")
+                                    ), unsafe_allow_html=True)
+                                    
+                                    st.balloons()
+                                    st.session_state["confirm_save_pulang"] = False
+                                    
+                                    # Auto refresh
+                                    time.sleep(2)
+                                    st.rerun()
+                                else:
+                                    st.error("❌ Gagal menyimpan data! Silakan coba lagi.")
+                                    st.session_state["confirm_save_pulang"] = False
                     
-                    st.session_state["attendance"] = attendance_list
-                    if save_attendance(attendance_list):
-                        st.success(f"✅ Absen pulang tanggal {date_str} berhasil disimpan!")
-                        st.info(f"⏰ Total overtime: {total_overtime_hours:.1f} jam dari {ot_workers} pekerja")
-                        st.balloons()
+                    with col_conf2:
+                        if st.button("❌ BATAL", use_container_width=True, type="secondary", key="confirm_no_pulang"):
+                            st.session_state["confirm_save_pulang"] = False
+                            st.info("Dibatalkan. Data tidak disimpan.")
+                            st.rerun()
+                else:
+                    # INITIAL SAVE BUTTON
+                    if st.button("💾 SIMPAN ABSEN PULANG", use_container_width=True, type="primary", key="save_pulang"):
+                        st.session_state["confirm_save_pulang"] = True
                         st.rerun()
     
+    # ===== TAB RIWAYAT (Keep existing code) =====
     with tab2:
         st.markdown("### 📋 Riwayat Absensi")
         
@@ -2612,6 +2373,7 @@ elif st.session_state["menu"] == "Absensi":
         else:
             st.info("📝 Belum ada data absensi")
     
+    # ===== TAB LAPORAN (Keep existing code) =====
     with tab3:
         st.markdown("### 📊 Laporan Kehadiran")
         
@@ -3740,11 +3502,11 @@ elif st.session_state["menu"] == "Tracking":
     df = st.session_state["data_produksi"]
     
     if not df.empty:
-        st.markdown("""
-        <div style='background-color: #1E3A8A; padding: 15px; border-radius: 8px; margin-bottom: 25px;'>
-            <h3 style='color: white; text-align: center; margin: 0;'>📋 STATUS TRACKING PER TAHAPAN</h3>
-        </div>
-        """, unsafe_allow_html=True)
+        # st.markdown("""
+        # <div style='background-color: #1E3A8A; padding: 15px; border-radius: 8px; margin-bottom: 25px;'>
+        #     <h3 style='color: white; text-align: center; margin: 0;'>📋 STATUS TRACKING PER TAHAPAN</h3>
+        # </div>
+        # """, unsafe_allow_html=True)
         
         track_col1, track_col2 = st.columns(2)
         with track_col1:
