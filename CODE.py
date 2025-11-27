@@ -1791,10 +1791,16 @@ elif st.session_state["menu"] == "Input":
                         new_orders = []
                         
                         for prod_idx, product in enumerate(st.session_state["input_products"]):
-                            image_path = None
+                            # image_path = None
+                            # if product.get("image"):
+                            #     image_path = save_uploaded_image(product["image"], new_order_id, prod_idx)
+                            image_path = ""  # ✅ Default empty string
                             if product.get("image"):
-                                image_path = save_uploaded_image(product["image"], new_order_id, prod_idx)
-                            
+                                saved_path = save_uploaded_image(...)
+                                if saved_path:  # ✅ Cek kalau berhasil disimpan
+                                    image_path = saved_path
+                            elif product.get("image_path_from_db"):
+                                image_path = product["image_path_from_db"]  # ✅ Gunakan gambar dari DB                            
                             initial_history = [add_history_entry(f"{new_order_id}-P{prod_idx+1}", "Order Created", 
                             f"Product: {product['nama']}, Priority: {prioritas}, Type: {'Knockdown' if product.get('is_knockdown', False) else 'Normal'}")]
                         
