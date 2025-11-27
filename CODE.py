@@ -394,16 +394,6 @@ def apply_dynamic_theme():
     """
     
     st.markdown(css, unsafe_allow_html=True)
-
-theme:
-  default: "auto"  # auto, light, dark
-  accent_color: "blue"
-  font_family: "sans-serif"
-  
-ui:
-  sidebar_state: "collapsed"
-  card_shadows: true
-  animations: true
     
 # ===== KONFIGURASI DATABASE =====
 DATABASE_PATH = "ppic_data.json"
