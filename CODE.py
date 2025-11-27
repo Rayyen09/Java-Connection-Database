@@ -1784,9 +1784,70 @@ elif st.session_state["menu"] == "Input":
                 else:
                     # ===== PROCEED WITH NORMAL ORDER CREATION =====
                     if buyer and st.session_state["input_products"]:
-                        # ... your existing order creation code ...
-                        # (no changes needed here)
-                        pass
+                        existing_ids = st.session_state["data_produksi"]["Order ID"].tolist() if not st.session_state["data_produksi"].empty else []
+                        new_id_num = max([int(oid.split("-")[1]) for oid in existing_ids if "-" in oid], default=2400) + 1
+                        new_order_id = f"ORD-{new_id_num}"
+                        
+                        new_orders = []
+                        
+                        for prod_idx, product in enumerate(st.session_state["input_products"]):
+                            image_path = None
+                            if product.get("image"):
+                                image_path = save_uploaded_image(product["image"], new_order_id, prod_idx)
+                            
+                            initial_history = [add_history_entry(f"{new_order_id}-P{prod_idx+1}", "Order Created", 
+                            f"Product: {product['nama']}, Priority: {prioritas}, Type: {'Knockdown' if product.get('is_knockdown', False) else 'Normal'}")]
+                        
+                            tracking_data = init_tracking_data()
+                            first_stage = get_tracking_stages()[0]
+                            tracking_data[first_stage]["qty"] = product["qty"]
+                            
+                            order_data = {
+                                "Order ID": f"{new_order_id}-P{prod_idx+1}",
+                                "Order Date": order_date,
+                                "Buyer": buyer,
+                                "Produk": product["nama"],
+                                "Qty": product["qty"],
+                                "Material": product["material"],
+                                "Finishing": product["finishing"],
+                                "Description": product["description"],
+                                "Product Size P": product["prod_p"],
+                                "Product Size L": product["prod_l"],
+                                "Product Size T": product["prod_t"],
+                                "Product CBM": product["product_cbm"],
+                                "Packing Size P": product["pack_p"],
+                                "Packing Size L": product["pack_l"],
+                                "Packing Size T": product["pack_t"],
+                                "CBM per Pcs": product["cbm_per_pcs"],
+                                "Total CBM": product["total_cbm"],
+                                "Due Date": due_date,
+                                "Prioritas": prioritas,
+                                "Progress": "0%",
+                                "Proses Saat Ini": first_stage,
+                                "Keterangan": product["keterangan"],
+                                "Image Path": image_path if image_path else "",
+                                "Tracking": json.dumps(tracking_data),
+                                "History": json.dumps(initial_history),
+                                "Is Knockdown": product.get("is_knockdown", False),
+                                "Knockdown Pieces": json.dumps(product.get("knockdown_pieces", []))
+                            }
+                            
+                            new_orders.append(order_data)
+                        
+                        new_df = pd.DataFrame(new_orders)
+                        st.session_state["data_produksi"] = pd.concat(
+                            [st.session_state["data_produksi"], new_df], ignore_index=True
+                        )
+                        
+                        if save_data(st.session_state["data_produksi"]):
+                            st.success(f"✅ Order {new_order_id} dengan {len(st.session_state['input_products'])} produk berhasil ditambahkan!")
+                            st.balloons()
+                            st.session_state["input_products"] = []
+                            st.session_state["knockdown_pieces"] = []
+                            st.rerun()
+                    else:
+                        st.warning("⚠️ Harap pilih buyer dan tambahkan minimal 1 produk!")                    
+
 # ===== MENU: ABSENSI - TAB BASED WITH SEARCH =====
 elif st.session_state["menu"] == "Absensi":
     st.header("📝 ABSENSI PEKERJA HARIAN")
